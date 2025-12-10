@@ -47,9 +47,11 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 
 ### MCP Tools
 
-1. **`semantic_search(query, top_k)`** - Semantic code search across the codebase
-2. **`get_file(path)`** - Retrieve complete file contents
-3. **`get_context_for_prompt(query)`** - Get relevant context for prompt enhancement (primary tool)
+1. **`index_workspace(force)`** - Index workspace files for semantic search
+2. **`semantic_search(query, top_k)`** - Semantic code search across the codebase
+3. **`get_file(path)`** - Retrieve complete file contents
+4. **`get_context_for_prompt(query)`** - Get relevant context for prompt enhancement (primary tool)
+5. **`enhance_prompt(prompt, max_files, use_ai)`** - Transform simple prompts into detailed, structured prompts with codebase context
 
 ### Key Characteristics
 
@@ -171,9 +173,11 @@ context-engine/
 │       ├── server.ts         # MCP server implementation
 │       ├── serviceClient.ts  # Context service layer
 │       └── tools/
+│           ├── index.ts      # index_workspace tool
 │           ├── search.ts     # semantic_search tool
 │           ├── file.ts       # get_file tool
-│           └── context.ts    # get_context_for_prompt tool
+│           ├── context.ts    # get_context_for_prompt tool
+│           └── enhance.ts    # enhance_prompt tool
 ├── plan.md                   # Architecture documentation
 ├── package.json
 ├── tsconfig.json

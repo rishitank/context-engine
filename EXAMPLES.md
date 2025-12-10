@@ -228,6 +228,115 @@ export async function getUserProfile(userId: string) {
 }
 ```
 
+### enhance_prompt Tool
+
+The `enhance_prompt` tool transforms simple prompts into detailed, structured prompts enriched with relevant codebase context. This is particularly useful for RAG (Retrieval-Augmented Generation) pipelines and preparing prompts for external LLMs.
+
+**Use Cases:**
+- Preparing prompts for external LLM APIs with codebase context
+- RAG pipeline enhancement
+- Context enrichment before sending prompts to other services
+- Generating detailed prompts from simple user queries
+
+**Example 1: Basic Usage with AI Mode (Default)**
+
+```json
+{
+  "name": "enhance_prompt",
+  "arguments": {
+    "prompt": "How should we implement user authentication?",
+    "max_files": 5,
+    "use_ai": true
+  }
+}
+```
+
+This uses AI to intelligently select and summarize the most relevant code context, producing a well-structured prompt suitable for external LLMs.
+
+**Example 2: Template Mode**
+
+```json
+{
+  "name": "enhance_prompt",
+  "arguments": {
+    "prompt": "Show me the database schema",
+    "max_files": 3,
+    "use_ai": false
+  }
+}
+```
+
+Template mode returns raw code snippets in a structured format without AI summarization, useful when you want direct access to the code.
+
+**Example 3: Custom max_files Parameter**
+
+```json
+{
+  "name": "enhance_prompt",
+  "arguments": {
+    "prompt": "Explain the payment processing workflow",
+    "max_files": 10
+  }
+}
+```
+
+**Output Format Differences:**
+- **AI Mode (`use_ai: true`)**: Returns a narrative-style enhanced prompt with AI-generated summaries and context integration
+- **Template Mode (`use_ai: false`)**: Returns structured code snippets with metadata, suitable for programmatic processing
+
+**When to Use Each Mode:**
+- Use **AI Mode** when sending prompts to external LLMs or when you need human-readable context
+- Use **Template Mode** when building automated pipelines or when you need raw code for further processing
+
+### index_workspace Tool
+
+The `index_workspace` tool indexes workspace files for semantic search. This tool should be called during initial setup or after major codebase changes to ensure search results are accurate and up-to-date.
+
+**Use Cases:**
+- First-time setup of the MCP server
+- After major codebase changes or file reorganization
+- When semantic search returns no results or incomplete results
+- Periodic re-indexing for large codebases
+
+**Example 1: Basic Indexing**
+
+```json
+{
+  "name": "index_workspace",
+  "arguments": {
+    "force": false
+  }
+}
+```
+
+This performs incremental indexing, only processing files that have changed since the last index.
+
+**Example 2: Force Re-indexing**
+
+```json
+{
+  "name": "index_workspace",
+  "arguments": {
+    "force": true
+  }
+}
+```
+
+Force re-indexing rebuilds the entire index from scratch, useful when the index may be corrupted or out of sync.
+
+**Expected Output Format:**
+
+```
+Indexing workspace...
+Indexed X files in Y seconds
+```
+
+**When to Use Force Re-indexing:**
+- After major codebase restructuring
+- If search results seem incomplete or inaccurate
+- When troubleshooting search functionality
+- After upgrading the MCP server
+
 ## Best Practices
 
 ### 1. Be Specific in Queries

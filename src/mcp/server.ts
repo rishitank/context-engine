@@ -186,6 +186,7 @@ export class ContextEngineMCPServer {
     console.error('Transport: stdio');
     console.error('');
     console.error('Available tools:');
+    console.error('  - index_workspace: Index workspace files for semantic search');
     console.error('  - semantic_search: Find code by semantic meaning');
     console.error('  - get_file: Retrieve file contents');
     console.error('  - get_context_for_prompt: Get enhanced context for prompts');
