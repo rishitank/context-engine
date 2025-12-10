@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Augment SDK state files
+.augment/
+.augment-context-state.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Runtime files
+*.pid
+*.seed
+
+# Optional: Exclude actual config files (keep examples only)
+# codex_config.toml  # Uncomment if you have actual config files

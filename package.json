@@ -1,0 +1,45 @@
+{
+  "name": "context-engine-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server implementation using Auggie SDK for local context engine",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "context-engine-mcp": "./bin/context-engine-mcp.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "tsx src/index.ts",
+    "start:dist": "node --import tsx dist/index.js",
+    "prepare": "npm run build",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "verify": "node verify-setup.js",
+    "index": "tsx src/index.ts --workspace . --index",
+    "inspector": "npx @modelcontextprotocol/inspector tsx src/index.ts --workspace ."
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "auggie",
+    "context-engine",
+    "semantic-search"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@augmentcode/auggie-sdk": "^0.1.10",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "minimatch": "^10.1.1",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.0.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.6",
+    "typescript": "^5.3.0"
+  }
+}

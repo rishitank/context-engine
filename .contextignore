@@ -1,0 +1,32 @@
+# Context Engine Ignore File
+# Files and patterns listed here will be excluded from context indexing
+
+# Dependencies (already excluded by default, but explicit is good)
+node_modules/
+
+# Build artifacts
+dist/
+build/
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+
+# State files
+.augment-context-state.json
+
+# Lock files (large and not useful for context)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
