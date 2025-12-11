@@ -67,19 +67,86 @@ All notable changes to the Context Engine MCP Server will be documented in this 
 ### Future Enhancements (Planned)
 
 As outlined in plan.md, these can be added without architectural changes:
-- File watchers for automatic re-indexing
-- Incremental indexing for faster updates
+- ~~File watchers for automatic re-indexing~~ ✅ Implemented in v1.1.0
+- ~~Incremental indexing for faster updates~~ ✅ Implemented in v1.1.0
 - Multi-repo support
 - Role-based filtering
 - Hybrid search (semantic + keyword)
-- Result caching
+- ~~Result caching~~ ✅ Implemented in v1.0.0
 - Custom tool configurations
 - Advanced context bundling strategies
+
+## [1.1.0] - 2025-12-11
+
+### Added
+
+#### New MCP Tools (4 new tools)
+- `index_status` - View index health metadata (workspace, status, lastIndexed, fileCount, isStale)
+- `reindex_workspace` - Clear and rebuild the entire index
+- `clear_index` - Remove index state without rebuilding
+- `tool_manifest` - Capability discovery for agents (lists all available tools)
+
+#### File System Watcher (Phase 2)
+- Real-time file watching with `chokidar` library
+- Automatic incremental indexing on file changes
+- Configurable debounce (default: 500ms) and batch size (default: 100 files)
+- Enable with `--watch` or `-W` CLI flag
+- Graceful shutdown on SIGTERM/SIGINT
+
+#### Background Indexing (Phase 3)
+- Non-blocking indexing via worker threads
+- Message protocol: `index_start`, `index_progress`, `index_complete`, `index_error`
+- Graceful fallback to synchronous indexing on worker failure
+- Status tracking via `IndexStatus.status` field
+
+#### Offline Policy Enforcement (Phase 4)
+- New `CONTEXT_ENGINE_OFFLINE_ONLY` environment variable
+- Blocks initialization if remote API is configured when offline-only mode is enabled
+- Validation of API URL against localhost
+
+#### Retrieval Audit Metadata (Phase 4)
+- Enhanced `SearchResult` with audit fields:
+  - `matchType`: "semantic" | "keyword" | "hybrid"
+  - `chunkId`: Optional chunk identifier
+  - `retrievedAt`: ISO timestamp of retrieval
+- Audit table included in search results markdown output
+
+#### CLI Enhancements
+- New `--watch` / `-W` flag for enabling file watcher
+- Improved help output with watcher documentation
+
+### Changed
+- `src/mcp/server.ts` - Added watcher integration and graceful shutdown handling
+- `src/mcp/serviceClient.ts` - Added `indexFiles()`, `getIndexStatus()`, `clearIndex()`, offline policy checks
+- `src/mcp/tools/search.ts` - Enhanced output with audit metadata table
+
+### New Files
+- `src/mcp/tools/status.ts` - Index status tool
+- `src/mcp/tools/lifecycle.ts` - Lifecycle management tools
+- `src/mcp/tools/manifest.ts` - Tool manifest for capability discovery
+- `src/watcher/FileWatcher.ts` - Core file watcher implementation
+- `src/watcher/types.ts` - Watcher type definitions
+- `src/watcher/index.ts` - Watcher exports
+- `src/worker/IndexWorker.ts` - Background indexing worker
+- `src/worker/messages.ts` - Worker IPC message types
+
+### Tests Added
+- `tests/tools/status.test.ts` - Index status tool tests
+- `tests/tools/lifecycle.test.ts` - Lifecycle tools tests
+- `tests/watcher/FileWatcher.test.ts` - File watcher tests
+- `tests/worker/IndexWorker.test.ts` - Background worker tests
+- Total test count: 106 (all passing)
+
+### Dependencies
+- Added `chokidar@^3.5.3` for file system watching
+- Added `@types/chokidar@^2.1.3` for TypeScript support
+
+---
 
 ## [Unreleased]
 
 ### Planned
-- Automated testing suite
+- E2E testing with MCP Inspector
 - Performance benchmarks
 - Additional example configurations
 - Video tutorials
@@ -89,5 +156,6 @@ As outlined in plan.md, these can be added without architectural changes:
 
 ## Version History
 
+- **1.1.0** - MCP compliance, automation, background indexing, and policy features
 - **1.0.0** - Initial release with core functionality
 

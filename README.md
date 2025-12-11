@@ -45,13 +45,20 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 
 ## Features
 
-### MCP Tools
+### MCP Tools (9 tools)
 
+#### Core Tools
 1. **`index_workspace(force)`** - Index workspace files for semantic search
 2. **`semantic_search(query, top_k)`** - Semantic code search across the codebase
 3. **`get_file(path)`** - Retrieve complete file contents
 4. **`get_context_for_prompt(query)`** - Get relevant context for prompt enhancement (primary tool)
 5. **`enhance_prompt(prompt, max_files, use_ai)`** - Transform simple prompts into detailed, structured prompts with codebase context
+
+#### Management Tools (New in v1.1.0)
+6. **`index_status()`** - View index health metadata (status, fileCount, lastIndexed, isStale)
+7. **`reindex_workspace()`** - Clear and rebuild the entire index
+8. **`clear_index()`** - Remove index state without rebuilding
+9. **`tool_manifest()`** - Capability discovery for agents (lists all available tools)
 
 ### Key Characteristics
 
@@ -60,6 +67,9 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 - ✅ **LLM-agnostic**: No LLM-specific logic in the engine
 - ✅ **Storage-agnostic**: Auggie SDK handles storage abstraction
 - ✅ **Extensible**: Clean separation allows easy feature additions
+- ✅ **Real-time watching**: Automatic incremental indexing on file changes (v1.1.0)
+- ✅ **Background indexing**: Non-blocking indexing via worker threads (v1.1.0)
+- ✅ **Offline policy**: Enforce local-only operation with environment variable (v1.1.0)
 
 ## Prerequisites
 
@@ -100,7 +110,19 @@ node dist/index.js --workspace /path/to/project
 
 # Index workspace before starting
 node dist/index.js --workspace /path/to/project --index
+
+# Enable file watcher for automatic incremental indexing (v1.1.0)
+node dist/index.js --workspace /path/to/project --watch
 ```
+
+### CLI Options
+
+| Option | Alias | Description |
+|--------|-------|-------------|
+| `--workspace <path>` | `-w` | Workspace directory to index (default: current directory) |
+| `--index` | `-i` | Index the workspace before starting server |
+| `--watch` | `-W` | Enable filesystem watcher for incremental indexing |
+| `--help` | `-h` | Show help message |
 
 ### With Codex CLI
 
@@ -168,16 +190,27 @@ npm start
 ```
 context-engine/
 ├── src/
-│   ├── index.ts              # Entry point
-│   └── mcp/
-│       ├── server.ts         # MCP server implementation
-│       ├── serviceClient.ts  # Context service layer
-│       └── tools/
-│           ├── index.ts      # index_workspace tool
-│           ├── search.ts     # semantic_search tool
-│           ├── file.ts       # get_file tool
-│           ├── context.ts    # get_context_for_prompt tool
-│           └── enhance.ts    # enhance_prompt tool
+│   ├── index.ts              # Entry point with CLI parsing
+│   ├── mcp/
+│   │   ├── server.ts         # MCP server implementation
+│   │   ├── serviceClient.ts  # Context service layer
+│   │   └── tools/
+│   │       ├── index.ts      # index_workspace tool
+│   │       ├── search.ts     # semantic_search tool
+│   │       ├── file.ts       # get_file tool
+│   │       ├── context.ts    # get_context_for_prompt tool
+│   │       ├── enhance.ts    # enhance_prompt tool
+│   │       ├── status.ts     # index_status tool (v1.1.0)
+│   │       ├── lifecycle.ts  # reindex/clear tools (v1.1.0)
+│   │       └── manifest.ts   # tool_manifest tool (v1.1.0)
+│   ├── watcher/              # File watching (v1.1.0)
+│   │   ├── FileWatcher.ts    # Core watcher logic
+│   │   ├── types.ts          # Event types
+│   │   └── index.ts          # Exports
+│   └── worker/               # Background indexing (v1.1.0)
+│       ├── IndexWorker.ts    # Worker thread
+│       └── messages.ts       # IPC messages
+├── tests/                    # Unit tests (106 tests)
 ├── plan.md                   # Architecture documentation
 ├── package.json
 ├── tsconfig.json
@@ -194,6 +227,24 @@ Once connected to Codex CLI, you can use natural language:
 - "Find error handling patterns"
 
 The server will automatically use the appropriate tools to provide relevant context.
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `AUGMENT_API_TOKEN` | Auggie API token (or use `auggie login`) | - |
+| `AUGMENT_API_URL` | Auggie API URL | `https://api.augmentcode.com` |
+| `CONTEXT_ENGINE_OFFLINE_ONLY` | Enforce offline-only policy (v1.1.0) | `false` |
+
+### Offline-Only Mode (v1.1.0)
+
+To enforce that no data is sent to remote APIs, set:
+
+```bash
+export CONTEXT_ENGINE_OFFLINE_ONLY=true
+```
+
+When enabled, the server will fail to start if a remote API URL is configured. This is useful for enterprise environments with strict data locality requirements.
 
 ## Troubleshooting
 
@@ -215,6 +266,37 @@ Index your workspace first:
 ```bash
 node dist/index.js --workspace /path/to/project --index
 ```
+
+### File watcher not detecting changes (v1.1.0)
+
+1. Ensure you started the server with `--watch` flag
+2. Check that the file is not in `.gitignore` or `.contextignore`
+3. Wait for the debounce period (default: 500ms) after the last change
+4. Check server logs for watcher status messages
+
+### Offline-only mode blocking startup (v1.1.0)
+
+If you see an error about offline-only mode:
+1. Remove the `CONTEXT_ENGINE_OFFLINE_ONLY` environment variable, or
+2. Configure a localhost API URL in `AUGMENT_API_URL`
+
+## Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run tests with coverage
+npm run test:coverage
+
+# Interactive MCP testing
+npm run inspector
+```
+
+**Test Status:** 106 tests passing ✅
 
 ## License
 
