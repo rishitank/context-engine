@@ -45,7 +45,7 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 
 ## Features
 
-### MCP Tools (10 tools)
+### MCP Tools (23 tools)
 
 #### Core Tools
 1. **`index_workspace(force)`** - Index workspace files for semantic search
@@ -55,11 +55,37 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 5. **`get_context_for_prompt(query)`** - Get relevant context for prompt enhancement (primary tool)
 6. **`enhance_prompt(prompt)`** - Transform simple prompts into detailed, structured prompts using AI-powered enhancement
 
-#### Management Tools (New in v1.1.0)
+#### Management Tools (v1.1.0)
 7. **`index_status()`** - View index health metadata (status, fileCount, lastIndexed, isStale)
 8. **`reindex_workspace()`** - Clear and rebuild the entire index
 9. **`clear_index()`** - Remove index state without rebuilding
 10. **`tool_manifest()`** - Capability discovery for agents (lists all available tools)
+
+#### Planning Tools (New in v1.4.0)
+11. **`create_plan(goal, context_files)`** - Generate structured execution plans with DAG analysis
+12. **`refine_plan(plan_id, refinements)`** - Refine existing plans based on feedback
+13. **`visualize_plan(plan_id, format)`** - Generate visual representations of plans (text, mermaid)
+
+#### Plan Persistence Tools (New in v1.4.0)
+14. **`save_plan(plan, name, tags)`** - Save plans to persistent storage with metadata
+15. **`load_plan(plan_id)`** - Load previously saved plans
+16. **`list_plans(status, tags, limit)`** - List saved plans with filtering options
+17. **`delete_plan(plan_id)`** - Delete saved plans from storage
+
+#### Approval Workflow Tools (New in v1.4.0)
+18. **`request_approval(plan_id, type, step_numbers)`** - Create approval requests for plans/steps
+19. **`respond_approval(request_id, action, comments)`** - Approve, reject, or request modifications
+
+#### Execution Tracking Tools (New in v1.4.0)
+20. **`start_step(plan_id, step_number)`** - Mark a step as in-progress
+21. **`complete_step(plan_id, step_number, notes)`** - Mark a step as completed
+22. **`fail_step(plan_id, step_number, reason)`** - Mark a step as failed with reason
+23. **`view_progress(plan_id)`** - View execution progress and statistics
+
+#### History & Versioning Tools (New in v1.4.0)
+24. **`view_history(plan_id, limit)`** - View version history of a plan
+25. **`compare_plan_versions(plan_id, from_version, to_version)`** - Generate diff between versions
+26. **`rollback_plan(plan_id, version)`** - Rollback to a previous plan version
 
 ### Key Characteristics
 
@@ -71,6 +97,10 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 - ✅ **Real-time watching**: Automatic incremental indexing on file changes (v1.1.0)
 - ✅ **Background indexing**: Non-blocking indexing via worker threads (v1.1.0)
 - ✅ **Offline policy**: Enforce local-only operation with environment variable (v1.1.0)
+- ✅ **Planning mode**: DAG-based task planning with dependencies (v1.4.0)
+- ✅ **Plan persistence**: Save, load, and manage execution plans (v1.4.0)
+- ✅ **Approval workflows**: Request and respond to plan approvals (v1.4.0)
+- ✅ **Execution tracking**: Track step progress and completion status (v1.4.0)
 
 ## Prerequisites
 
@@ -195,15 +225,27 @@ context-engine/
 │   ├── mcp/
 │   │   ├── server.ts         # MCP server implementation
 │   │   ├── serviceClient.ts  # Context service layer
-│   │   └── tools/
-│   │       ├── index.ts      # index_workspace tool
-│   │       ├── search.ts     # semantic_search tool
-│   │       ├── file.ts       # get_file tool
-│   │       ├── context.ts    # get_context_for_prompt tool
-│   │       ├── enhance.ts    # enhance_prompt tool
-│   │       ├── status.ts     # index_status tool (v1.1.0)
-│   │       ├── lifecycle.ts  # reindex/clear tools (v1.1.0)
-│   │       └── manifest.ts   # tool_manifest tool (v1.1.0)
+│   │   ├── tools/
+│   │   │   ├── index.ts      # index_workspace tool
+│   │   │   ├── search.ts     # semantic_search tool
+│   │   │   ├── file.ts       # get_file tool
+│   │   │   ├── context.ts    # get_context_for_prompt tool
+│   │   │   ├── enhance.ts    # enhance_prompt tool
+│   │   │   ├── status.ts     # index_status tool (v1.1.0)
+│   │   │   ├── lifecycle.ts  # reindex/clear tools (v1.1.0)
+│   │   │   ├── manifest.ts   # tool_manifest tool (v1.1.0)
+│   │   │   ├── plan.ts       # Planning tools (v1.4.0)
+│   │   │   └── planManagement.ts  # Plan persistence/workflow tools (v1.4.0)
+│   │   ├── services/         # Business logic services (v1.4.0)
+│   │   │   ├── planningService.ts        # Plan generation, DAG analysis
+│   │   │   ├── planPersistenceService.ts # Save/load/list plans
+│   │   │   ├── approvalWorkflowService.ts # Approval request handling
+│   │   │   ├── executionTrackingService.ts # Step progress tracking
+│   │   │   └── planHistoryService.ts     # Version history, rollback
+│   │   ├── types/            # TypeScript type definitions (v1.4.0)
+│   │   │   └── planning.ts   # Planning-related types
+│   │   └── prompts/          # AI prompt templates (v1.4.0)
+│   │       └── planning.ts   # Planning system prompts
 │   ├── watcher/              # File watching (v1.1.0)
 │   │   ├── FileWatcher.ts    # Core watcher logic
 │   │   ├── types.ts          # Event types
@@ -211,7 +253,7 @@ context-engine/
 │   └── worker/               # Background indexing (v1.1.0)
 │       ├── IndexWorker.ts    # Worker thread
 │       └── messages.ts       # IPC messages
-├── tests/                    # Unit tests (106 tests)
+├── tests/                    # Unit tests (186 tests)
 ├── plan.md                   # Architecture documentation
 ├── package.json
 ├── tsconfig.json
@@ -297,7 +339,7 @@ npm run test:coverage
 npm run inspector
 ```
 
-**Test Status:** 106 tests passing ✅
+**Test Status:** 186 tests passing ✅
 
 ## License
 

@@ -2,6 +2,93 @@
 
 All notable changes to the Context Engine MCP Server will be documented in this file.
 
+## [1.4.0] - 2025-12-15
+
+### Added
+
+#### Planning Mode (Phase 1)
+- **`create_plan` tool**: Generate structured execution plans with DAG analysis
+- **`refine_plan` tool**: Refine plans based on feedback and constraints
+- **`visualize_plan` tool**: Generate text or Mermaid diagram visualizations
+- **PlanningService**: Core planning logic with AI-powered plan generation
+  - DAG algorithms: topological sort, critical path analysis, parallel groups
+  - JSON validation and extraction from LLM responses
+  - Plan refinement and iterative improvement
+
+#### Plan Persistence (Phase 2)
+- **`save_plan` tool**: Save plans to disk with metadata (name, tags, status)
+- **`load_plan` tool**: Load previously saved plans by ID
+- **`list_plans` tool**: List saved plans with filtering (status, tags, limit)
+- **`delete_plan` tool**: Remove saved plans from storage
+- **PlanPersistenceService**: JSON-based plan storage with index management
+
+#### Approval Workflows (Phase 2)
+- **`request_approval` tool**: Create approval requests for full plans, single steps, or step groups
+- **`respond_approval` tool**: Approve, reject, or request modifications with comments
+- **ApprovalWorkflowService**: Approval request lifecycle management
+  - Risk-based approval summaries
+  - Pending approval tracking
+  - Approval history per plan
+
+#### Execution Tracking (Phase 2)
+- **`start_step` tool**: Mark a step as in-progress
+- **`complete_step` tool**: Mark a step as completed with notes
+- **`fail_step` tool**: Mark a step as failed with reason (optionally skip dependents)
+- **`view_progress` tool**: View execution progress and statistics
+- **ExecutionTrackingService**: Step state machine with dependency management
+  - States: pending, ready, in_progress, completed, failed, skipped, blocked
+  - Automatic dependent step unlocking
+  - Progress percentage calculation
+
+#### History & Versioning (Phase 2)
+- **`view_history` tool**: View version history of a plan
+- **`compare_plan_versions` tool**: Generate detailed diff between versions
+- **`rollback_plan` tool**: Rollback to a previous plan version
+- **PlanHistoryService**: Version tracking with diff generation
+  - Step-level change detection (added, removed, modified)
+  - File change tracking
+  - Scope change detection
+
+#### Type Definitions
+- Extended `planning.ts` with 25+ new types:
+  - `PlanStatus`, `StepExecutionStatus`, `ApprovalStatus`, `ApprovalAction`
+  - `ApprovalRequest`, `ApprovalResponse`, `ApprovalResult`
+  - `PlanExecutionState`, `StepExecutionState`, `ExecutionProgress`
+  - `PlanVersion`, `PlanHistory`, `PlanDiff`, `FieldChange`
+  - Various options interfaces for save, complete, fail, rollback operations
+
+### Fixed
+- **PlanPersistenceService.savePlan()**: Handle undefined `goal` and `id` properties
+  - Added null/undefined checks in `generatePlanName()` method
+  - Added null/undefined checks in `getPlanFilePath()` method
+  - Added null/undefined checks in `countFilesAffected()` method
+  - Generate fallback plan ID when `plan.id` is undefined
+  - Generate fallback plan name when `plan.goal` is undefined
+  - Return correct `planId` in savePlan result
+
+### Tests Added
+- `tests/services/planningService.test.ts` - DAG algorithms and JSON validation (20 tests)
+- `tests/services/planPersistenceService.test.ts` - Save/load/list/delete operations (15 tests)
+- `tests/services/approvalWorkflowService.test.ts` - Approval workflow tests (11 tests)
+- `tests/services/executionTrackingService.test.ts` - Execution tracking tests (10 tests)
+- `tests/services/planHistoryService.test.ts` - History and versioning tests (11 tests)
+- `tests/prompts/planning.test.ts` - Planning prompt template tests
+- `tests/tools/plan.test.ts` - Planning tool handler tests
+- **Total test count: 186 (all passing)**
+
+### New Files
+- `src/mcp/services/planningService.ts` - Core planning logic
+- `src/mcp/services/planPersistenceService.ts` - Plan storage
+- `src/mcp/services/approvalWorkflowService.ts` - Approval workflows
+- `src/mcp/services/executionTrackingService.ts` - Execution tracking
+- `src/mcp/services/planHistoryService.ts` - Version history
+- `src/mcp/tools/plan.ts` - Planning tool handlers
+- `src/mcp/tools/planManagement.ts` - Plan management tool handlers
+- `src/mcp/types/planning.ts` - Planning type definitions
+- `src/mcp/prompts/planning.ts` - Planning prompt templates
+
+---
+
 ## [1.3.0] - 2025-12-11
 
 ### Changed (BREAKING)
@@ -192,5 +279,8 @@ As outlined in plan.md, these can be added without architectural changes:
 
 ## Version History
 
+- **1.4.0** - Planning mode with persistence, approval workflows, execution tracking, and history
+- **1.3.0** - AI-only enhance_prompt tool (breaking change)
+- **1.2.0** - codebase_retrieval tool with JSON output
 - **1.1.0** - MCP compliance, automation, background indexing, and policy features
 - **1.0.0** - Initial release with core functionality
