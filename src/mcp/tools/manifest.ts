@@ -11,7 +11,7 @@ export interface ToolManifestArgs {
 }
 
 const manifest = {
-  version: '1.5.0',
+  version: '1.7.0',
   capabilities: [
     'semantic_search',
     'file_retrieval',
@@ -61,8 +61,9 @@ const manifest = {
     'view_history',
     'compare_plan_versions',
     'rollback_plan',
-    // Code Review Tools (v1.5.0)
+    // Code Review Tools (v1.7.0)
     'review_changes',
+    'review_git_diff',
   ],
   features: {
     planning: {
@@ -112,7 +113,7 @@ const manifest = {
     },
     code_review: {
       description: 'AI-powered code review with structured output and confidence scoring',
-      version: '1.5.0',
+      version: '1.7.0',
       tools: ['review_changes', 'review_git_diff'],
       features: [
         'Structured output schema (Codex-style findings)',

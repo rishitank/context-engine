@@ -2,7 +2,79 @@
 
 All notable changes to the Context Engine MCP Server will be documented in this file.
 
-## [1.6.0] - 2025-12-21
+## [1.7.0] - 2024-12-24
+
+### Added
+
+#### AI-Powered Code Review Tools
+- **New MCP Tool**: `review_changes` - AI-powered code review with structured output
+  - **Structured Output Schema**: Codex-style findings with detailed metadata
+  - **Confidence Scoring**: Per-finding confidence scores (0.0-1.0) and overall confidence
+  - **Priority Levels**: P0 (critical), P1 (high), P2 (medium), P3 (low) with semantic meaning
+  - **Category-Based Analysis**: Correctness, security, performance, maintainability, style, documentation
+  - **Changed Lines Filter**: Focus on modified lines to reduce noise (configurable)
+  - **Actionable Suggestions**: Each finding includes specific fix recommendations
+  - **File Context Support**: Optional full file content for better understanding
+  - **Custom Instructions**: Tailor reviews to specific frameworks or coding standards
+  - **File Exclusion**: Glob pattern support to skip generated files, tests, etc.
+
+- **New MCP Tool**: `review_git_diff` - Automatic git diff retrieval and review
+  - **Staged Changes**: Review changes staged for commit (`git diff --cached`)
+  - **Unstaged Changes**: Review working directory modifications
+  - **Branch Comparison**: Compare any two branches or commits
+  - **Commit Review**: Review specific commit changes
+  - **Pattern Filtering**: Include/exclude files by glob patterns
+  - **Seamless Integration**: Combines git operations with code review in one call
+
+#### Code Review Infrastructure
+- **CodeReviewService**: Core service layer for code review operations
+  - Diff parsing (unified diff format)
+  - Finding filtering and deduplication
+  - Confidence threshold enforcement
+  - Changed lines detection and filtering
+  - File exclusion pattern matching
+  - Review result validation
+
+- **Git Utilities**: Comprehensive git integration
+  - `execGitCommand`: Safe git command execution with error handling
+  - `getGitStatus`: Repository detection and status checking
+  - `getGitDiff`: Flexible diff retrieval (staged, unstaged, branch, commit)
+  - `getStagedDiff`, `getUnstagedDiff`, `getCommitDiff`: Convenience functions
+  - Diff parsing with addition/deletion counting
+
+- **HTTP API Endpoints**: REST API for code review
+  - `POST /api/v1/review-changes` - Review code from diff content
+  - `POST /api/v1/review-git-diff` - Review code from git automatically
+  - Full HTTP server infrastructure (CORS, error handling, logging)
+  - Health check and status endpoints
+
+#### Type Definitions
+- **ReviewFinding**: Individual code review finding with metadata
+- **ReviewResult**: Complete review output with findings and summary
+- **ReviewCategory**: Enum for review categories
+- **ReviewPriority**: P0-P3 priority levels
+- **ReviewOptions**: Configurable review parameters
+- **FileContext**: File content mapping for context
+
+### Testing
+- **67 New Unit Tests**: Comprehensive test coverage for code review functionality
+  - Diff parsing tests (15 tests)
+  - Service layer tests (40 tests)
+  - Git utilities tests (12 tests)
+- **270 Total Tests**: All tests passing
+- **Edge Case Coverage**: Empty diffs, malformed input, null/undefined handling
+
+### Documentation
+- **README.md**: Updated with code review tools documentation
+- **Tool Manifest**: Added `code_review` capability with feature list
+- **Examples**: Code review usage examples (see EXAMPLES.md)
+
+### Performance
+- **Timeout Protection**: 120-second timeout for AI review operations
+- **Efficient Filtering**: Changed lines filter reduces AI processing overhead
+- **Parallel Processing**: HTTP endpoints support concurrent review requests
+
+## [1.6.0] - 2024-12-21
 
 ### Added
 

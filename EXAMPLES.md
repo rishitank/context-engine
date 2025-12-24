@@ -867,5 +867,299 @@ Implement user authentication with JWT tokens
 
 ---
 
+## Code Review Examples (v1.7.0)
+
+### Example 1: Review Staged Changes Before Commit
+
+**User Query:**
+> "Review my staged changes before I commit"
+
+**What Happens:**
+1. Codex calls `review_git_diff` tool
+2. Target: "staged" (default)
+3. AI analyzes the diff and returns structured findings
+
+**Tool Call:**
+```json
+{
+  "tool": "review_git_diff",
+  "arguments": {
+    "target": "staged"
+  }
+}
+```
+
+**Expected Response:**
+```json
+{
+  "findings": [
+    {
+      "category": "security",
+      "priority": "P0",
+      "confidence": 0.95,
+      "file_path": "src/auth/login.ts",
+      "line_start": 42,
+      "line_end": 45,
+      "title": "SQL Injection Vulnerability",
+      "description": "Direct string concatenation in SQL query allows SQL injection attacks. User input is not sanitized or parameterized.",
+      "suggestion": "Use parameterized queries or an ORM. Replace: `SELECT * FROM users WHERE email = '${email}'` with prepared statements.",
+      "code_snippet": "const query = `SELECT * FROM users WHERE email = '${email}'`;"
+    },
+    {
+      "category": "correctness",
+      "priority": "P1",
+      "confidence": 0.88,
+      "file_path": "src/utils/validation.ts",
+      "line_start": 15,
+      "line_end": 18,
+      "title": "Missing Null Check",
+      "description": "Function may receive null/undefined input but doesn't validate before accessing properties.",
+      "suggestion": "Add null check: `if (!user || !user.email) { throw new Error('Invalid user'); }`",
+      "code_snippet": "function validateEmail(user) {\n  return user.email.includes('@');\n}"
+    }
+  ],
+  "overall_correctness": "needs_improvement",
+  "overall_confidence_score": 0.91,
+  "overall_explanation": "Found 2 significant issues: 1 critical security vulnerability and 1 correctness issue. The SQL injection vulnerability must be fixed before merging.",
+  "changes_summary": {
+    "files_changed": 2,
+    "lines_added": 15,
+    "lines_removed": 8
+  }
+}
+```
+
+### Example 2: Security-Focused Review of a Feature Branch
+
+**User Query:**
+> "Review my feature branch for security issues compared to main"
+
+**What Happens:**
+1. Codex calls `review_git_diff` tool
+2. Target: "feature/user-auth", Base: "main"
+3. Options: Focus on security category only
+
+**Tool Call:**
+```json
+{
+  "tool": "review_git_diff",
+  "arguments": {
+    "target": "feature/user-auth",
+    "base": "main",
+    "options": {
+      "categories": "security",
+      "confidence_threshold": 0.8,
+      "max_findings": 10
+    }
+  }
+}
+```
+
+**Expected Response:**
+```json
+{
+  "findings": [
+    {
+      "category": "security",
+      "priority": "P0",
+      "confidence": 0.92,
+      "file_path": "src/api/auth.ts",
+      "line_start": 28,
+      "line_end": 32,
+      "title": "Hardcoded Secret Key",
+      "description": "Secret key is hardcoded in source code. This is a critical security vulnerability as the key will be exposed in version control.",
+      "suggestion": "Move secret to environment variable: `const secret = process.env.JWT_SECRET;` and add validation to ensure it's set.",
+      "code_snippet": "const secret = 'my-super-secret-key-12345';"
+    },
+    {
+      "category": "security",
+      "priority": "P1",
+      "confidence": 0.87,
+      "file_path": "src/api/auth.ts",
+      "line_start": 45,
+      "line_end": 48,
+      "title": "Weak Password Hashing",
+      "description": "Using MD5 for password hashing is cryptographically broken. Attackers can easily crack MD5 hashes.",
+      "suggestion": "Use bcrypt or argon2: `const hash = await bcrypt.hash(password, 10);`",
+      "code_snippet": "const hash = crypto.createHash('md5').update(password).digest('hex');"
+    }
+  ],
+  "overall_correctness": "needs_major_revision",
+  "overall_confidence_score": 0.89,
+  "overall_explanation": "Found 2 critical security issues that must be addressed before merging. Both involve authentication security best practices."
+}
+```
+
+### Example 3: Review Specific Diff with Custom Instructions
+
+**User Query:**
+> "Review this diff and check if it follows React best practices"
+
+**What Happens:**
+1. User provides diff content
+2. Codex calls `review_changes` tool
+3. Custom instructions specify React focus
+
+**Tool Call:**
+```json
+{
+  "tool": "review_changes",
+  "arguments": {
+    "diff": "diff --git a/src/components/UserProfile.tsx b/src/components/UserProfile.tsx\n...",
+    "options": {
+      "custom_instructions": "Focus on React best practices: hooks usage, component structure, prop types, and performance optimizations",
+      "categories": "correctness,performance,maintainability",
+      "changed_lines_only": true
+    }
+  }
+}
+```
+
+**Expected Response:**
+```json
+{
+  "findings": [
+    {
+      "category": "performance",
+      "priority": "P2",
+      "confidence": 0.85,
+      "file_path": "src/components/UserProfile.tsx",
+      "line_start": 12,
+      "line_end": 15,
+      "title": "Missing useMemo for Expensive Calculation",
+      "description": "Expensive filtering operation runs on every render. This could cause performance issues with large datasets.",
+      "suggestion": "Wrap in useMemo: `const filteredUsers = useMemo(() => users.filter(u => u.active), [users]);`",
+      "code_snippet": "const filteredUsers = users.filter(u => u.active);"
+    },
+    {
+      "category": "maintainability",
+      "priority": "P2",
+      "confidence": 0.78,
+      "file_path": "src/components/UserProfile.tsx",
+      "line_start": 22,
+      "line_end": 25,
+      "title": "Missing PropTypes or TypeScript Interface",
+      "description": "Component props are not typed, making it harder to catch errors and understand the component API.",
+      "suggestion": "Add interface: `interface UserProfileProps { userId: string; onUpdate: (user: User) => void; }`",
+      "code_snippet": "export function UserProfile({ userId, onUpdate }) {"
+    }
+  ],
+  "overall_correctness": "acceptable",
+  "overall_confidence_score": 0.81,
+  "overall_explanation": "Code is functional but has 2 areas for improvement related to React best practices: performance optimization and type safety."
+}
+```
+
+### Example 4: Review Unstaged Changes (Work in Progress)
+
+**User Query:**
+> "Review my current work in progress changes"
+
+**What Happens:**
+1. Codex calls `review_git_diff` tool
+2. Target: "unstaged" (working directory changes)
+3. Quick feedback on uncommitted work
+
+**Tool Call:**
+```json
+{
+  "tool": "review_git_diff",
+  "arguments": {
+    "target": "unstaged",
+    "options": {
+      "confidence_threshold": 0.7,
+      "max_findings": 5
+    }
+  }
+}
+```
+
+### Example 5: Review with File Context for Better Understanding
+
+**User Query:**
+> "Review this change with full file context"
+
+**What Happens:**
+1. User provides diff and full file contents
+2. Codex calls `review_changes` tool
+3. AI has complete context for better analysis
+
+**Tool Call:**
+```json
+{
+  "tool": "review_changes",
+  "arguments": {
+    "diff": "diff --git a/src/services/payment.ts b/src/services/payment.ts\n...",
+    "file_contexts": {
+      "src/services/payment.ts": "// Full file content here...\nexport class PaymentService {\n  ...\n}",
+      "src/types/payment.ts": "// Type definitions...\nexport interface Payment {\n  ...\n}"
+    },
+    "options": {
+      "categories": "correctness,security",
+      "changed_lines_only": false
+    }
+  }
+}
+```
+
+### Example 6: Exclude Generated Files from Review
+
+**User Query:**
+> "Review my changes but skip generated files and tests"
+
+**What Happens:**
+1. Codex calls `review_git_diff` tool
+2. Exclude patterns filter out unwanted files
+
+**Tool Call:**
+```json
+{
+  "tool": "review_git_diff",
+  "arguments": {
+    "target": "staged",
+    "options": {
+      "exclude_patterns": "*.test.ts,*.spec.js,dist/*,build/*,*.generated.ts"
+    }
+  }
+}
+```
+
+### Common Code Review Workflows
+
+#### 1. Pre-Commit Review
+```
+1. Make changes to code
+2. git add <files>
+3. review_git_diff("staged") → Get AI feedback
+4. Fix issues
+5. git commit
+```
+
+#### 2. Pull Request Review
+```
+1. review_git_diff("feature-branch", "main") → Review all changes
+2. Filter by priority: P0 and P1 only
+3. Address critical issues
+4. Re-review after fixes
+```
+
+#### 3. Security Audit
+```
+1. review_git_diff("develop", "main", options: { categories: "security" })
+2. Review all P0 security findings
+3. Create tickets for P1/P2 findings
+4. Document P3 findings for future improvement
+```
+
+#### 4. Code Quality Check
+```
+1. review_git_diff("unstaged") → Quick WIP check
+2. review_git_diff("staged") → Pre-commit check
+3. Fix issues iteratively
+4. Commit when overall_correctness is "good" or "acceptable"
+```
+
+---
+
 For more examples and use cases, see the [TESTING.md](TESTING.md) guide.
 

@@ -45,7 +45,7 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 
 ## Features
 
-### MCP Tools (29 tools available)
+### MCP Tools (31 tools available)
 
 #### Core Context Tools
 1. **`index_workspace(force?)`** - Index workspace files for semantic search
@@ -159,6 +159,39 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 29. **`list_memories(category?)`** - List all stored memories
     - `category` (optional): Filter to a specific category
 
+#### Code Review Tools (v1.7.0)
+30. **`review_changes(diff, file_contexts?, options?)`** - AI-powered code review with structured output
+    - `diff`: Diff content to review (unified diff format)
+    - `file_contexts` (optional): JSON object mapping file paths to their full content for additional context
+    - `options` (optional): Review options object with the following properties:
+      - `confidence_threshold` (optional): Minimum confidence score (0-1, default: 0.7)
+      - `max_findings` (optional): Maximum number of findings to return (default: 20)
+      - `categories` (optional): Comma-separated categories to focus on (correctness, security, performance, maintainability, style, documentation)
+      - `changed_lines_only` (optional): Only report issues on changed lines (default: true)
+      - `custom_instructions` (optional): Custom instructions for the reviewer
+      - `exclude_patterns` (optional): Comma-separated glob patterns for files to exclude
+    - **Output**: Structured JSON with findings array, each containing:
+      - `category`: Issue category (correctness, security, performance, etc.)
+      - `priority`: P0 (critical), P1 (high), P2 (medium), or P3 (low)
+      - `confidence`: Confidence score (0.0-1.0)
+      - `file_path`: Affected file path
+      - `line_start`, `line_end`: Line range
+      - `title`: Brief issue description
+      - `description`: Detailed explanation
+      - `suggestion`: Actionable fix suggestion
+      - `code_snippet`: Relevant code excerpt
+31. **`review_git_diff(target?, base?, include_patterns?, options?)`** - Review code changes from git automatically
+    - `target` (optional): Target reference - 'staged', 'unstaged', branch name, or commit SHA (default: 'staged')
+    - `base` (optional): Base reference for comparison (branch name or commit SHA)
+    - `include_patterns` (optional): Array of glob patterns for files to include
+    - `options` (optional): Same review options as review_changes
+    - **Output**: Same structured JSON output as review_changes
+    - **Examples**:
+      - Review staged changes: `review_git_diff()` or `review_git_diff('staged')`
+      - Review unstaged changes: `review_git_diff('unstaged')`
+      - Review branch vs main: `review_git_diff('feature-branch', 'main')`
+      - Review specific commit: `review_git_diff('abc123')`
+
 ### Key Characteristics
 
 - ✅ **Local-first**: No cloud dependencies, no exposed ports, no data leakage
@@ -175,6 +208,8 @@ This implementation follows a clean 5-layer architecture as outlined in `plan.md
 - ✅ **Approval workflows**: Built-in approval system for plans and steps (v1.4.0)
 - ✅ **Defensive programming**: Comprehensive null/undefined handling (v1.4.1)
 - ✅ **Cross-session memory**: Persistent memory system for preferences, decisions, and facts (v1.4.1)
+- ✅ **AI-powered code review**: Structured code review with confidence scoring and priority levels (v1.7.0)
+- ✅ **Git integration**: Automatic diff retrieval for staged, unstaged, branch, and commit changes (v1.7.0)
 
 ## Planning Workflow (v1.4.0+)
 
