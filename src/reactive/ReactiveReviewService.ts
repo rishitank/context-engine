@@ -469,7 +469,7 @@ export class ReactiveReviewService {
                 minTimeout: config.session_execution_timeout_ms,
             });
 
-            console.error(`[ReactiveReviewService] Adaptive timeout calculated: ${Math.round(adaptiveTimeout/1000)}s for ${fileCount} files`);
+            console.error(`[ReactiveReviewService] Adaptive timeout calculated: ${Math.round(adaptiveTimeout / 1000)}s for ${fileCount} files`);
 
             // Configure circuit breaker for resilience
             const cbConfig = getCircuitBreakerConfig();
@@ -492,7 +492,7 @@ export class ReactiveReviewService {
             // Store adaptive timeout for session monitoring
             this.sessionAdaptiveTimeouts.set(sessionId, adaptiveTimeout);
 
-            console.error(`[ReactiveReviewService] Review plan created with ${session.total_steps} steps, plan_id=${planId}, adaptive_timeout=${Math.round(adaptiveTimeout/1000)}s`);
+            console.error(`[ReactiveReviewService] Review plan created with ${session.total_steps} steps, plan_id=${planId}, adaptive_timeout=${Math.round(adaptiveTimeout / 1000)}s`);
 
             return session;
         } catch (error) {
@@ -1081,6 +1081,21 @@ export class ReactiveReviewService {
 
         // Extract the plan from the result
         const plan = planResult.plan;
+
+        // Validate plan exists
+        if (!plan) {
+            throw new Error('Failed to generate review plan');
+        }
+
+        // CRITICAL FIX: Remove all step dependencies for reactive review
+        // In reactive review, all steps are independent file reviews that can run in parallel
+        // The AI-generated plan may have unnecessary dependencies that cause steps to block
+        if (plan.steps) {
+            for (const step of plan.steps) {
+                step.depends_on = []; // Clear all dependencies
+            }
+            console.error(`[ReactiveReviewService] Cleared dependencies from ${plan.steps.length} steps for parallel execution`);
+        }
 
         // Mark as a reactive plan with context metadata
         return {
