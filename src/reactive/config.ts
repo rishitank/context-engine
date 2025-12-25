@@ -6,6 +6,7 @@
  * All reactive features are OPT-IN by default to ensure
  * zero impact on existing functionality until explicitly enabled.
  */
+import os from 'os';
 
 // ============================================================================
 // Configuration Interface
@@ -242,7 +243,6 @@ export function getConfig(): ReactiveConfig {
 
             if (optimizeWorkers) {
                 // Use CPU-aware optimization
-                const os = require('os');
                 const cpuCores = os.cpus().length;
                 const optimal = Math.min(cpuCores + 1, cpuCores * 2);
                 console.error(`[ReactiveConfig] Worker optimization enabled: ${cpuCores} CPU cores detected, using ${optimal} workers`);
