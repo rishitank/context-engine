@@ -44,10 +44,14 @@ describe('ReactiveReviewService', () => {
     // Create minimal mocks - we only need to test cleanup logic
     mockContextClient = {
       getWorkspaceRoot: jest.fn(() => '/test/workspace'),
+      disableCommitCache: jest.fn(),
     } as unknown as jest.Mocked<ContextServiceClient>;
 
     mockPlanningService = {} as unknown as jest.Mocked<PlanningService>;
-    mockExecutionService = {} as unknown as jest.Mocked<ExecutionTrackingService>;
+    mockExecutionService = {
+      getExecutionState: jest.fn(() => ({ status: 'running' })), // Return a valid execution state
+      abortPlanExecution: jest.fn(),
+    } as unknown as jest.Mocked<ExecutionTrackingService>;
 
     service = new ReactiveReviewService(
       mockContextClient,
@@ -96,8 +100,12 @@ describe('ReactiveReviewService', () => {
         // Manually add a session in 'executing' state (active, non-terminal)
         const serviceAny = service as any;
         const sessionId = 'test-session-1';
-        serviceAny.sessions.set(sessionId, createMockSession(sessionId, 'executing'));
+        const mockSession = createMockSession(sessionId, 'executing');
+        serviceAny.sessions.set(sessionId, mockSession);
         serviceAny.sessionStartTimes.set(sessionId, Date.now() - 1000000); // Old session
+        serviceAny.sessionLastActivity.set(sessionId, Date.now()); // Recent activity (not a zombie)
+        // Set up the plan to prevent zombie detection
+        serviceAny.sessionPlans.set(sessionId, { id: mockSession.plan_id, steps: [] });
 
         expect(service.getSessionCount().total).toBe(1);
         const cleaned = service.cleanupExpiredSessions();
@@ -205,6 +213,7 @@ describe('ReactiveReviewService', () => {
         serviceAny.sessionFindings.set(sessionId, 5);
         serviceAny.sessionStartTimes.set(sessionId, Date.now() - (2 * 60 * 60 * 1000)); // 2 hours ago
         serviceAny.sessionTokensUsed.set(sessionId, 1000);
+        serviceAny.sessionLastActivity.set(sessionId, Date.now() - (2 * 60 * 60 * 1000)); // 2 hours ago
 
         service.cleanupExpiredSessions();
 
@@ -214,6 +223,7 @@ describe('ReactiveReviewService', () => {
         expect(serviceAny.sessionFindings.has(sessionId)).toBe(false);
         expect(serviceAny.sessionStartTimes.has(sessionId)).toBe(false);
         expect(serviceAny.sessionTokensUsed.has(sessionId)).toBe(false);
+        expect(serviceAny.sessionLastActivity.has(sessionId)).toBe(false);
       });
 
       it('should preserve active sessions when evicting for max_sessions', () => {
@@ -223,8 +233,12 @@ describe('ReactiveReviewService', () => {
         // Create some active (non-terminal) sessions using 'executing' status
         for (let i = 0; i < 3; i++) {
           const sessionId = `active-session-${i}`;
-          serviceAny.sessions.set(sessionId, createMockSession(sessionId, 'executing', `active-commit-${i}`));
+          const mockSession = createMockSession(sessionId, 'executing', `active-commit-${i}`);
+          serviceAny.sessions.set(sessionId, mockSession);
           serviceAny.sessionStartTimes.set(sessionId, 1000 + i);
+          serviceAny.sessionLastActivity.set(sessionId, Date.now()); // Recent activity (not a zombie)
+          // Set up the plan to prevent zombie detection
+          serviceAny.sessionPlans.set(sessionId, { id: mockSession.plan_id, steps: [] });
         }
 
         // Create terminal sessions to exceed max
