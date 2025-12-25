@@ -105,6 +105,13 @@ export interface ReactiveConfig {
     max_sessions: number;
 
     /**
+     * Timeout for sessions in executing state without progress
+     * Sessions are marked as failed if they exceed this time without completing
+     * @default 600000 (10 minutes)
+     */
+    session_execution_timeout_ms: number;
+
+    /**
      * Path to SQLite database (if enabled)
      * @default ~/.context-engine/reactive.db
      */
@@ -133,6 +140,7 @@ const DEFAULT_CONFIG: ReactiveConfig = {
     max_retries: 2,
     session_ttl_ms: 3600000, // 1 hour
     max_sessions: 100,
+    session_execution_timeout_ms: 600000, // 10 minutes
 };
 
 // ============================================================================
@@ -176,6 +184,7 @@ export function getConfig(): ReactiveConfig {
         max_retries: parseIntSafe(process.env.REACTIVE_MAX_RETRIES, DEFAULT_CONFIG.max_retries),
         session_ttl_ms: parseIntSafe(process.env.REACTIVE_SESSION_TTL, DEFAULT_CONFIG.session_ttl_ms),
         max_sessions: parseIntSafe(process.env.REACTIVE_MAX_SESSIONS, DEFAULT_CONFIG.max_sessions),
+        session_execution_timeout_ms: parseIntSafe(process.env.REACTIVE_EXECUTION_TIMEOUT, DEFAULT_CONFIG.session_execution_timeout_ms),
 
         // Optional paths
         sqlite_path: process.env.REACTIVE_SQLITE_PATH,

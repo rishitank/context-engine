@@ -76,11 +76,17 @@ export class ReactiveReviewService {
     /** Tokens used per session */
     private sessionTokensUsed: Map<string, number> = new Map();
 
+    /** Last activity time for each session (for zombie detection) */
+    private sessionLastActivity: Map<string, number> = new Map();
+
     /** Cleanup timer for expired sessions */
     private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
     /** Terminal session states that are eligible for cleanup */
     private static readonly TERMINAL_STATES: ReviewSessionStatus[] = ['completed', 'failed', 'cancelled'];
+
+    /** Active session states that should be monitored for zombies */
+    private static readonly ACTIVE_STATES: ReviewSessionStatus[] = ['initializing', 'analyzing', 'executing'];
 
     constructor(
         private contextClient: ContextServiceClient,
@@ -118,14 +124,48 @@ export class ReactiveReviewService {
 
     /**
      * Clean up expired sessions based on TTL and max session limits.
-     * Sessions in terminal states (completed, failed, cancelled) are eligible for cleanup.
+     * Also detects and cleans up zombie sessions (stuck in active state).
      */
     cleanupExpiredSessions(): number {
         const config = getConfig();
         const now = Date.now();
         let cleanedCount = 0;
+        let zombieCount = 0;
 
-        // First pass: remove sessions that have exceeded TTL
+        // First pass: detect and clean up zombie sessions
+        for (const [sessionId, session] of this.sessions) {
+            // Check for zombie sessions (active but with orphaned/missing plan)
+            if (this.isZombieSession(sessionId, session)) {
+                session.status = 'failed';
+                session.error = 'Session became orphaned: plan or execution state missing';
+                session.updated_at = new Date().toISOString();
+                zombieCount++;
+                console.error(`[ReactiveReviewService] Marked zombie session ${sessionId} as failed`);
+                continue;
+            }
+
+            // Check for execution timeout (sessions stuck in active states too long)
+            if (ReactiveReviewService.ACTIVE_STATES.includes(session.status)) {
+                const lastActivity = this.sessionLastActivity.get(sessionId) || this.sessionStartTimes.get(sessionId) || 0;
+                const inactiveTime = now - lastActivity;
+
+                if (inactiveTime > config.session_execution_timeout_ms) {
+                    session.status = 'failed';
+                    session.error = `Session execution timeout: no activity for ${Math.round(inactiveTime / 1000)}s`;
+                    session.updated_at = new Date().toISOString();
+                    zombieCount++;
+                    console.error(`[ReactiveReviewService] Session ${sessionId} timed out after ${Math.round(inactiveTime / 1000)}s of inactivity`);
+
+                    // Clean up associated resources
+                    this.contextClient.disableCommitCache();
+                    if (session.plan_id) {
+                        this.executionService.abortPlanExecution(session.plan_id);
+                    }
+                }
+            }
+        }
+
+        // Second pass: remove terminal sessions that have exceeded TTL
         for (const [sessionId, session] of this.sessions) {
             if (!ReactiveReviewService.TERMINAL_STATES.includes(session.status)) {
                 continue; // Only clean up terminal sessions
@@ -140,7 +180,7 @@ export class ReactiveReviewService {
             }
         }
 
-        // Second pass: if still over max_sessions, remove oldest terminal sessions
+        // Third pass: if still over max_sessions, remove oldest terminal sessions
         if (this.sessions.size > config.max_sessions) {
             const terminalSessions = Array.from(this.sessions.entries())
                 .filter(([, session]) => ReactiveReviewService.TERMINAL_STATES.includes(session.status))
@@ -157,11 +197,11 @@ export class ReactiveReviewService {
             }
         }
 
-        if (cleanedCount > 0) {
-            console.error(`[ReactiveReviewService] Cleaned up ${cleanedCount} expired sessions, ${this.sessions.size} remaining`);
+        if (cleanedCount > 0 || zombieCount > 0) {
+            console.error(`[ReactiveReviewService] Cleanup: ${cleanedCount} expired, ${zombieCount} zombies handled, ${this.sessions.size} remaining`);
         }
 
-        return cleanedCount;
+        return cleanedCount + zombieCount;
     }
 
     /**
@@ -173,6 +213,41 @@ export class ReactiveReviewService {
         this.sessionFindings.delete(sessionId);
         this.sessionStartTimes.delete(sessionId);
         this.sessionTokensUsed.delete(sessionId);
+        this.sessionLastActivity.delete(sessionId);
+    }
+
+    /**
+     * Update the last activity time for a session.
+     */
+    private touchSession(sessionId: string): void {
+        this.sessionLastActivity.set(sessionId, Date.now());
+    }
+
+    /**
+     * Check if a session is a zombie (stuck in active state with missing or orphaned plan).
+     */
+    private isZombieSession(sessionId: string, session: ReviewSession): boolean {
+        // Only check active states
+        if (!ReactiveReviewService.ACTIVE_STATES.includes(session.status)) {
+            return false;
+        }
+
+        // Check if the session has a plan_id but no corresponding plan
+        if (session.plan_id && !this.sessionPlans.has(sessionId)) {
+            console.error(`[ReactiveReviewService] Zombie detected: Session ${sessionId} has plan_id ${session.plan_id} but no plan in memory`);
+            return true;
+        }
+
+        // Check if execution state exists for executing sessions
+        if (session.status === 'executing' && session.plan_id) {
+            const execState = this.executionService.getExecutionState(session.plan_id);
+            if (!execState) {
+                console.error(`[ReactiveReviewService] Zombie detected: Session ${sessionId} is executing but no execution state for plan ${session.plan_id}`);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -226,8 +301,10 @@ export class ReactiveReviewService {
             updated_at: now,
         };
 
+        const startTime = Date.now();
         this.sessions.set(sessionId, session);
-        this.sessionStartTimes.set(sessionId, Date.now());
+        this.sessionStartTimes.set(sessionId, startTime);
+        this.sessionLastActivity.set(sessionId, startTime);
         this.sessionTokensUsed.set(sessionId, 0);
         this.sessionFindings.set(sessionId, 0);
 
@@ -248,18 +325,40 @@ export class ReactiveReviewService {
                 }
             }
 
-            // Update status
+            // Update status and activity
             session.status = 'analyzing';
             session.updated_at = new Date().toISOString();
+            this.touchSession(sessionId);
 
             // Create a review plan using the planning service
             const plan = await this.createReviewPlan(prMetadata, options);
-            session.plan_id = plan.id || sessionId;
+
+            // Validate plan was created successfully with a valid ID
+            const planId = plan.id || sessionId;
+            if (!plan || !planId) {
+                throw new Error('Plan creation failed: no valid plan ID generated');
+            }
+
+            // Ensure plan has the ID set
+            plan.id = planId;
+            session.plan_id = planId;
             session.total_steps = plan.steps?.length || 0;
             this.sessionPlans.set(sessionId, plan);
+            this.touchSession(sessionId);
 
             // Initialize execution tracking
-            this.executionService.initializeExecution(plan);
+            const execState = this.executionService.initializeExecution(plan);
+
+            // Verify execution state was created
+            if (!execState) {
+                throw new Error(`Failed to initialize execution state for plan ${planId}`);
+            }
+
+            // Double-check execution state is retrievable
+            const verifyState = this.executionService.getExecutionState(planId);
+            if (!verifyState) {
+                throw new Error(`Execution state not found after initialization for plan ${planId}`);
+            }
 
             // Enable parallel execution if configured
             if (config.parallel_exec) {
@@ -273,8 +372,9 @@ export class ReactiveReviewService {
             // Update session status
             session.status = 'executing';
             session.updated_at = new Date().toISOString();
+            this.touchSession(sessionId);
 
-            console.error(`[ReactiveReviewService] Review plan created with ${session.total_steps} steps`);
+            console.error(`[ReactiveReviewService] Review plan created with ${session.total_steps} steps, plan_id=${planId}`);
 
             return session;
         } catch (error) {
@@ -292,7 +392,7 @@ export class ReactiveReviewService {
 
     /**
      * Execute the review plan for a session.
-     * 
+     *
      * @param sessionId Session ID
      * @param stepExecutor Custom step executor function
      */
@@ -307,20 +407,47 @@ export class ReactiveReviewService {
 
         const plan = this.sessionPlans.get(sessionId);
         if (!plan) {
-            throw new Error(`No plan found for session: ${sessionId}`);
+            // Mark as failed if plan is missing (zombie prevention)
+            session.status = 'failed';
+            session.error = 'Plan not found in memory - session may have become orphaned';
+            session.updated_at = new Date().toISOString();
+            throw new Error(`No plan found for session: ${sessionId} (plan may have been evicted or failed to persist)`);
         }
 
         if (session.status !== 'executing') {
             throw new Error(`Session is not in executing state: ${session.status}`);
         }
 
+        // Verify execution state exists before proceeding
+        const execState = this.executionService.getExecutionState(session.plan_id);
+        if (!execState) {
+            session.status = 'failed';
+            session.error = 'Execution state not found - session may have become orphaned';
+            session.updated_at = new Date().toISOString();
+            throw new Error(`Execution state not found for plan ${session.plan_id} (zombie session detected)`);
+        }
+
+        // Track activity at start of execution
+        this.touchSession(sessionId);
+
         try {
+            // Create a wrapped executor that tracks activity
+            const wrappedExecutor: StepExecutor = async (step, context) => {
+                this.touchSession(sessionId);
+                const result = await stepExecutor(step, context);
+                this.touchSession(sessionId);
+                return result;
+            };
+
             // Execute steps (parallel or sequential based on config)
             const results = await this.executionService.executeReadyStepsParallel(
                 session.plan_id,
                 plan,
-                stepExecutor
+                wrappedExecutor
             );
+
+            // Track activity after execution
+            this.touchSession(sessionId);
 
             // Update session based on results
             const allSucceeded = results.every(r => r.success);
@@ -341,18 +468,32 @@ export class ReactiveReviewService {
 
     /**
      * Get the current status of a review session.
+     * Also checks for zombie state and updates session if detected.
      */
     getReviewStatus(sessionId: string): ReviewStatus | null {
         const session = this.sessions.get(sessionId);
         if (!session) return null;
 
+        // Check for zombie state when getting status
+        if (this.isZombieSession(sessionId, session)) {
+            session.status = 'failed';
+            session.error = 'Session became orphaned: plan or execution state missing';
+            session.updated_at = new Date().toISOString();
+            console.error(`[ReactiveReviewService] Zombie session ${sessionId} detected during status check`);
+        }
+
         const progress = this.executionService.getProgress(session.plan_id);
         const startTime = this.sessionStartTimes.get(sessionId) || Date.now();
         const tokensUsed = this.sessionTokensUsed.get(sessionId) || 0;
         const findingsCount = this.sessionFindings.get(sessionId) || 0;
+        const lastActivity = this.sessionLastActivity.get(sessionId) || startTime;
 
         // Get cache stats for hit rate
         const cacheStats = this.contextClient.getCacheStats();
+
+        // Calculate if session appears stalled (no activity for 2+ minutes)
+        const inactiveMs = Date.now() - lastActivity;
+        const appearsStalled = ReactiveReviewService.ACTIVE_STATES.includes(session.status) && inactiveMs > 120000;
 
         return {
             session,
@@ -370,6 +511,8 @@ export class ReactiveReviewService {
                 elapsed_ms: Date.now() - startTime,
                 tokens_used: tokensUsed,
                 cache_hit_rate: cacheStats.hitRate,
+                last_activity_ms: inactiveMs,
+                appears_stalled: appearsStalled,
             },
             findings_count: findingsCount,
         };
