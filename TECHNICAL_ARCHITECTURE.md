@@ -38,7 +38,7 @@ Context Engine is a sophisticated MCP (Model Context Protocol) server that provi
 - view_progress, view_history, compare_plan_versions, rollback_plan
 
 // Code Review
-- review_changes, review_git_diff, review_diff, check_invariants, run_static_analysis
+- review_changes, review_git_diff, review_diff, review_auto, check_invariants, run_static_analysis
 
 // Reactive Review (Phase 4)
 - reactive_review_pr, get_review_status, pause_review, resume_review, get_review_telemetry

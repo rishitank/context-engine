@@ -294,7 +294,40 @@ This document provides detailed API specifications for all 20+ MCP tools exposed
 
 ---
 
-### 10. `run_static_analysis`
+### 10. `review_auto`
+
+**Description**: Smart wrapper that automatically chooses the best review tool:\n- If `diff` is provided, runs `review_diff`.\n- Otherwise runs `review_git_diff` (pulls changes from git).\n\nReturns a stable wrapper payload: `{ selected_tool, rationale, output }`.
+
+**Input Schema**:
+```typescript
+{
+  tool?: 'auto' | 'review_diff' | 'review_git_diff'; // Default: 'auto'
+
+  // For review_diff
+  diff?: string;
+  changed_files?: string[];
+  review_diff_options?: object; // Same shape as review_diff options
+
+  // For review_git_diff
+  target?: string;              // Default: 'staged'
+  base?: string;
+  include_patterns?: string[];
+  review_git_diff_options?: object; // Same shape as ReviewOptions
+}
+```
+
+**Output**:
+```typescript
+{
+  selected_tool: 'review_diff' | 'review_git_diff';
+  rationale: string;
+  output: object; // EnterpriseReviewResult OR { git_info, review }
+}
+```
+
+---
+
+### 11. `run_static_analysis`
 
 **Description**: Run local static analyzers (TypeScript and optional Semgrep) independently.
 
@@ -324,7 +357,7 @@ This document provides detailed API specifications for all 20+ MCP tools exposed
 
 ---
 
-### 11. `check_invariants`
+### 12. `check_invariants`
 
 **Description**: Run deterministic YAML invariants (`.review-invariants.yml`) against a unified diff.
 
