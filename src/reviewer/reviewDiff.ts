@@ -17,7 +17,7 @@ import { formatGitHubComment } from './output/github.js';
 import { runStaticAnalyzers } from './checks/adapters/index.js';
 import type { StaticAnalyzerId } from './checks/adapters/types.js';
 
-const TOOL_VERSION = '2.0.0-phase1';
+const TOOL_VERSION = '1.9.0';
 
 export interface ReviewDiffOptions {
   confidence_threshold?: number;

@@ -11,7 +11,7 @@ export interface ToolManifestArgs {
 }
 
 const manifest = {
-  version: '1.8.0',
+  version: '1.9.0',
   capabilities: [
     'semantic_search',
     'file_retrieval',
@@ -135,7 +135,7 @@ const manifest = {
     },
     enterprise_review: {
       description: 'Deterministic diff-first preflight review with risk scoring',
-      version: '1.8.0',
+      version: '1.9.0',
       tools: ['review_diff'],
       features: [
         'Risk scoring (1-5) based on deterministic preflight',
@@ -147,7 +147,7 @@ const manifest = {
     },
     static_analysis: {
       description: 'Optional local static analyzers for CI/IDE feedback',
-      version: '1.8.0',
+      version: '1.9.0',
       tools: ['run_static_analysis', 'check_invariants'],
       features: [
         'TypeScript typecheck via tsc (noEmit)',

@@ -2,6 +2,26 @@
 
 All notable changes to the Context Engine MCP Server will be documented in this file.
 
+## [1.9.0] - 2025-12-26
+
+### ✨ New Features
+- **Static analysis (opt-in)**: `review_diff` can now run local static analyzers for extra deterministic signal
+  - **TypeScript typecheck** via `tsc --noEmit` (enabled with `options.enable_static_analysis=true`)
+  - **Semgrep** support (optional) when `semgrep` is installed on PATH
+- **New MCP tool**: `check_invariants` - run YAML invariants deterministically against a unified diff (no LLM)
+- **New MCP tool**: `run_static_analysis` - run local static analyzers and return structured findings
+
+### 📊 Improvements
+- **Telemetry**: `review_diff` now reports per-phase timing breakdowns in `stats.timings_ms`
+  - `preflight`, `invariants`, `static_analysis`, `context_fetch`, `secrets_scrub`, `llm_structural`, `llm_detailed`
+- **Two-pass LLM timing**: structural/detailed pass durations are now tracked and surfaced through `review_diff`
+
+### 🔒 Notes
+- All additions are **backward compatible**; static analysis is **disabled by default**.
+- Semgrep is intentionally not bundled as a dependency; install it separately if you want it in your pipeline.
+
+---
+
 ## [1.8.0] - 2025-12-25
 
 ### 🎉 Overview
