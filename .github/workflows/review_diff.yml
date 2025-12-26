@@ -1,0 +1,90 @@
+name: Context Engine Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Run review_diff
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          CE_REVIEW_INCLUDE_SARIF: "true"
+          CE_REVIEW_INCLUDE_MARKDOWN: "true"
+          CE_REVIEW_FAIL_ON_SEVERITY: "CRITICAL"
+        run: npx --no-install tsx scripts/ci/review-diff.ts
+
+      - name: Upload review artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-diff-artifacts
+          path: artifacts/
+          if-no-files-found: ignore
+
+      - name: Upload SARIF
+        if: >
+          always() &&
+          hashFiles('artifacts/review_diff.sarif') != '' &&
+          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: artifacts/review_diff.sarif
+
+      - name: Post PR comment
+        if: >
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.fork == false &&
+          hashFiles('artifacts/review_diff.md') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('artifacts/review_diff.md', 'utf8');
+            const marker = '<!-- context-engine-review -->';
+            const fullBody = `${marker}\n${body}`;
+
+            const issue_number = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100,
+            });
+
+            const existing = comments.find(c => typeof c.body === 'string' && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo,
+                comment_id: existing.id,
+                body: fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number,
+                body: fullBody,
+              });
+            }

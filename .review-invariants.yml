@@ -1,0 +1,39 @@
+security:
+  # Example invariant: block dangerous dynamic evaluation.
+  - id: SEC001
+    rule: "No eval() usage in source code"
+    paths: ["src/**"]
+    severity: CRITICAL
+    category: security
+    action: deny
+    deny:
+      regex:
+        pattern: "\\beval\\("
+
+  # Example invariant: conditional safeguard requirement.
+  # If code references req.user in API handlers, require an auth guard call.
+  - id: SEC002
+    rule: "If req.user is used in API handlers, requireAuth() must be present"
+    paths: ["src/api/**", "src/http/**", "src/**"]
+    severity: HIGH
+    category: security
+    action: when_require
+    when:
+      regex:
+        pattern: "req\\.user"
+    require:
+      regex:
+        pattern: "requireAuth\\("
+
+reliability:
+  # Example invariant: encourage logging in error handlers (heuristic).
+  - id: REL001
+    rule: "Avoid empty catch blocks; log or rethrow errors"
+    paths: ["src/**"]
+    severity: MEDIUM
+    category: reliability
+    action: deny
+    deny:
+      regex:
+        pattern: "catch\\s*\\(.*\\)\\s*\\{\\s*\\}"
+
