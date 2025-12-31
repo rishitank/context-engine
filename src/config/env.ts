@@ -20,3 +20,7 @@ export function envInt(name: string, defaultValue: number, opts?: { min?: number
   return parsed;
 }
 
+export function envMs(name: string, defaultValue: number, opts?: { min?: number; max?: number }): number {
+  // Alias for envInt for clarity when the unit is milliseconds.
+  return envInt(name, defaultValue, opts);
+}

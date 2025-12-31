@@ -610,6 +610,9 @@ The server will automatically use the appropriate tools to provide relevant cont
 | `CE_HASH_NORMALIZE_EOL` | Normalize CRLF/LF when hashing (recommended with state store across Windows/Linux) | `false` |
 | `CE_METRICS` | Enable in-process metrics collection (Prometheus format) | `false` |
 | `CE_HTTP_METRICS` | Expose `GET /metrics` when running with `--http` | `false` |
+| `CE_AI_REQUEST_TIMEOUT_MS` | Default timeout for AI calls (`searchAndAsk`) in milliseconds | `120000` |
+| `CE_PLAN_AI_REQUEST_TIMEOUT_MS` | Timeout for planning AI calls in milliseconds (`create_plan`, `refine_plan`, step execution) | `300000` |
+| `CE_HTTP_PLAN_TIMEOUT_MS` | HTTP `POST /api/v1/plan` request timeout in milliseconds | `360000` |
 
 ### Metrics (optional)
 

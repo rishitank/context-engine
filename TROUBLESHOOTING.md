@@ -253,6 +253,18 @@ ls -la /path/to/file
 - Use more specific queries
 - Reduce result limits
 
+### `create_plan` times out
+
+**Cause**: Planning is an AI-heavy operation. Timeouts can come from (1) your MCP client tool timeout, or (2) server-side AI/request timeouts.
+
+**Best practice fixes**:
+- Make the request cheaper (faster): use smaller `max_context_files` / `context_token_budget`, set `generate_diagrams=false`, and `mvp_only=true`.
+- Increase your MCP client tool timeout (`tool_timeout_sec`) for complex planning tasks.
+- If needed, increase server-side timeouts:
+  - `CE_AI_REQUEST_TIMEOUT_MS` (default AI call timeout)
+  - `CE_PLAN_AI_REQUEST_TIMEOUT_MS` (planning-specific AI timeout)
+  - `CE_HTTP_PLAN_TIMEOUT_MS` (HTTP-only plan route timeout)
+
 ### Metrics endpoint not available
 
 **Symptoms**:

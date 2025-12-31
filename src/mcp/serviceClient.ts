@@ -24,6 +24,7 @@ import { fileURLToPath } from 'url';
 import { Worker } from 'worker_threads';
 import type { WorkerMessage } from '../worker/messages.js';
 import { featureEnabled } from '../config/features.js';
+import { envMs } from '../config/env.js';
 import { incCounter, observeDurationMs, setGauge } from '../metrics/metrics.js';
 import { JsonIndexStateStore, type IndexStateFile } from './indexStateStore.js';
 
@@ -209,6 +210,8 @@ const CACHE_TTL_MS = 60000;
 
 /** Default timeout for AI API calls in milliseconds (2 minutes) */
 const DEFAULT_API_TIMEOUT_MS = 120000;
+const MIN_API_TIMEOUT_MS = 10_000;
+const MAX_API_TIMEOUT_MS = 30 * 60 * 1000;
 
 /** State file name for persisting index state */
 const STATE_FILE_NAME = '.augment-context-state.json';
@@ -2613,7 +2616,11 @@ export class ContextServiceClient {
    * @returns The LLM's response as a string
    * @throws Error if the API call fails or authentication is invalid
    */
-  async searchAndAsk(searchQuery: string, prompt?: string): Promise<string> {
+  async searchAndAsk(
+    searchQuery: string,
+    prompt?: string,
+    options?: { timeoutMs?: number }
+  ): Promise<string> {
     const context = await this.ensureInitialized();
     const metricsStart = Date.now();
 
@@ -2628,6 +2635,13 @@ export class ContextServiceClient {
     // Use the search queue to serialize searchAndAsk calls
     // This prevents potential SDK concurrency issues while allowing
     // other operations (file reads, semantic search) to run in parallel
+    const defaultTimeoutMs = envMs('CE_AI_REQUEST_TIMEOUT_MS', DEFAULT_API_TIMEOUT_MS, {
+      min: MIN_API_TIMEOUT_MS,
+      max: MAX_API_TIMEOUT_MS,
+    });
+    const timeoutCandidate = options?.timeoutMs ?? defaultTimeoutMs;
+    const requestedTimeoutMs = Number.isFinite(timeoutCandidate) ? timeoutCandidate : defaultTimeoutMs;
+    const timeoutMs = Math.max(MIN_API_TIMEOUT_MS, Math.min(MAX_API_TIMEOUT_MS, requestedTimeoutMs));
     try {
       const response = await this.searchQueue.enqueue(async () => {
         try {
@@ -2645,7 +2659,7 @@ export class ContextServiceClient {
           console.error('[searchAndAsk] Failed:', error);
           throw error;
         }
-      });
+      }, timeoutMs);
       observeDurationMs(
         'context_engine_search_and_ask_duration_seconds',
         { result: 'success' },

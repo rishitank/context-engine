@@ -40,6 +40,7 @@ import {
   STEP_EXECUTION_SYSTEM_PROMPT,
   buildStepExecutionPrompt,
 } from '../prompts/planning.js';
+import { envMs } from '../../config/env.js';
 
 // ============================================================================
 // Constants
@@ -58,6 +59,10 @@ const DEFAULT_OPTIONS: Required<PlanGenerationOptions> = {
   analyze_parallelism: true,
   mvp_only: false,
 };
+
+const DEFAULT_PLAN_AI_TIMEOUT_MS = 5 * 60 * 1000;
+const MIN_PLAN_AI_TIMEOUT_MS = 30_000;
+const MAX_PLAN_AI_TIMEOUT_MS = 30 * 60 * 1000;
 
 // ============================================================================
 // Planning Service Class
@@ -101,7 +106,12 @@ export class PlanningService {
       const fullPrompt = `${PLANNING_SYSTEM_PROMPT}\n\n${planningPrompt}`;
 
       // Step 4: Call AI to generate the plan
-      const response = await this.contextClient.searchAndAsk(task, fullPrompt);
+      const response = await this.contextClient.searchAndAsk(task, fullPrompt, {
+        timeoutMs: envMs('CE_PLAN_AI_REQUEST_TIMEOUT_MS', DEFAULT_PLAN_AI_TIMEOUT_MS, {
+          min: MIN_PLAN_AI_TIMEOUT_MS,
+          max: MAX_PLAN_AI_TIMEOUT_MS,
+        }),
+      });
 
       // =========================================================================
       // PARALLELIZATION: Parse plan and prepare dependency analysis concurrently
@@ -197,7 +207,12 @@ export class PlanningService {
       const fullPrompt = `${REFINEMENT_SYSTEM_PROMPT}\n\n${refinementPrompt}`;
 
       // Call AI to refine
-      const response = await this.contextClient.searchAndAsk(currentPlan.goal, fullPrompt);
+      const response = await this.contextClient.searchAndAsk(currentPlan.goal, fullPrompt, {
+        timeoutMs: envMs('CE_PLAN_AI_REQUEST_TIMEOUT_MS', DEFAULT_PLAN_AI_TIMEOUT_MS, {
+          min: MIN_PLAN_AI_TIMEOUT_MS,
+          max: MAX_PLAN_AI_TIMEOUT_MS,
+        }),
+      });
 
       // Parse the refined plan
       const refinedPlan = await this.parseAndValidatePlan(response, null, currentPlan);
@@ -1000,7 +1015,12 @@ export class PlanningService {
       const fullPrompt = `${STEP_EXECUTION_SYSTEM_PROMPT}\n\n${executionPrompt}`;
 
       // Call AI to generate the code
-      const response = await this.contextClient.searchAndAsk(contextQuery, fullPrompt);
+      const response = await this.contextClient.searchAndAsk(contextQuery, fullPrompt, {
+        timeoutMs: envMs('CE_PLAN_AI_REQUEST_TIMEOUT_MS', DEFAULT_PLAN_AI_TIMEOUT_MS, {
+          min: MIN_PLAN_AI_TIMEOUT_MS,
+          max: MAX_PLAN_AI_TIMEOUT_MS,
+        }),
+      });
 
       // Parse the response
       const jsonStr = extractJsonFromResponse(response);

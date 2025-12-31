@@ -13,11 +13,19 @@ import { handleReviewChanges, type ReviewChangesArgs } from '../../mcp/tools/cod
 import { handleReviewGitDiff, type ReviewGitDiffArgs } from '../../mcp/tools/gitReview.js';
 import { handleReviewAuto, type ReviewAutoArgs } from '../../mcp/tools/reviewAuto.js';
 import { badRequest, HttpError } from '../middleware/errorHandler.js';
+import { envMs } from '../../config/env.js';
 
 const DEFAULT_TOOL_TIMEOUT_MS = 30000;
 const CONTEXT_TIMEOUT_MS = 60000;
 const AI_TOOL_TIMEOUT_MS = 120000;
 const INDEX_TIMEOUT_MS = 10 * 60 * 1000;
+const MIN_PLAN_TIMEOUT_MS = 30_000;
+const MAX_PLAN_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_HTTP_PLAN_TIMEOUT_MS = 6 * 60 * 1000;
+const PLAN_TOOL_TIMEOUT_MS = envMs('CE_HTTP_PLAN_TIMEOUT_MS', DEFAULT_HTTP_PLAN_TIMEOUT_MS, {
+    min: MIN_PLAN_TIMEOUT_MS,
+    max: MAX_PLAN_TIMEOUT_MS,
+});
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -224,7 +232,7 @@ export function createToolsRouter(serviceClient: ContextServiceClient): Router {
 
             const plan = await withTimeout(
                 handleCreatePlan(args, serviceClient),
-                AI_TOOL_TIMEOUT_MS,
+                PLAN_TOOL_TIMEOUT_MS,
                 'Plan generation'
             );
 
