@@ -15,11 +15,14 @@
  */
 
 import { DirectContext } from '@augmentcode/auggie-sdk';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { minimatch } from 'minimatch';
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
 import { Worker } from 'worker_threads';
-import { WorkerMessage } from '../worker/messages.js';
+import type { WorkerMessage } from '../worker/messages.js';
 
 // ============================================================================
 // Type Definitions
@@ -132,6 +135,8 @@ export interface ContextOptions {
   includeSummaries?: boolean;
   /** Include memories from .memories/ directory (default: true) */
   includeMemories?: boolean;
+  /** Bypass caches (default: false). */
+  bypassCache?: boolean;
 }
 
 // ============================================================================
@@ -204,6 +209,18 @@ const DEFAULT_API_TIMEOUT_MS = 120000;
 
 /** State file name for persisting index state */
 const STATE_FILE_NAME = '.augment-context-state.json';
+
+/** Separate fingerprint file (stable across restarts; only changes when we save a new index). */
+const INDEX_FINGERPRINT_FILE_NAME = '.augment-index-fingerprint.json';
+
+/** File name for persisting semantic search cache (safe to delete). */
+const SEARCH_CACHE_FILE_NAME = '.augment-search-cache.json';
+
+/** File name for persisting context bundle cache (safe to delete). */
+const CONTEXT_CACHE_FILE_NAME = '.augment-context-cache.json';
+
+/** Persistent cache TTL (7 days). */
+const PERSISTENT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Context ignore file names (in order of preference) */
 const CONTEXT_IGNORE_FILES = ['.contextignore', '.augment-ignore'];
@@ -466,6 +483,9 @@ const DEFAULT_EXCLUDED_PATTERNS = [
   '*.swo',
   '*~',                // Backup files
 
+  // === Context Engine Cache/State ===
+  '.augment-search-cache.json',
+
   // === Compiled Python ===
   '*.pyc',
   '*.pyo',
@@ -700,6 +720,22 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
+interface PersistentCacheFile {
+  version: number;
+  entries: Record<string, CacheEntry<SearchResult[]>>;
+}
+
+interface PersistentContextCacheFile {
+  version: number;
+  entries: Record<string, CacheEntry<ContextBundle>>;
+}
+
+interface IndexFingerprintFile {
+  version: number;
+  fingerprint: string;
+  updatedAt: string;
+}
+
 // ============================================================================
 // Context Service Client
 // ============================================================================
@@ -708,12 +744,23 @@ export class ContextServiceClient {
   private workspacePath: string;
   private context: DirectContext | null = null;
   private initPromise: Promise<void> | null = null;
+  private indexChain: Promise<void> = Promise.resolve();
 
   /** LRU cache for search results */
   private searchCache: Map<string, CacheEntry<SearchResult[]>> = new Map();
 
   /** Maximum cache size */
   private readonly maxCacheSize = 100;
+
+  /** Persistent semantic search cache (best-effort). */
+  private persistentSearchCache: Map<string, CacheEntry<SearchResult[]>> = new Map();
+  private persistentCacheLoaded = false;
+  private persistentCacheWriteTimer: NodeJS.Timeout | null = null;
+
+  /** Persistent context bundle cache (best-effort). */
+  private persistentContextCache: Map<string, CacheEntry<ContextBundle>> = new Map();
+  private persistentContextCacheLoaded = false;
+  private persistentContextCacheWriteTimer: NodeJS.Timeout | null = null;
 
   /** Index status metadata */
   private indexStatus: IndexStatus;
@@ -804,6 +851,7 @@ export class ContextServiceClient {
     if (this.ignorePatternsLoaded) return;
 
     this.ignorePatterns = [...DEFAULT_EXCLUDED_PATTERNS];
+    const debugIndex = process.env.CE_DEBUG_INDEX === 'true';
 
     // Try to load .gitignore
     const gitignorePath = path.join(this.workspacePath, '.gitignore');
@@ -812,7 +860,9 @@ export class ContextServiceClient {
         const content = fs.readFileSync(gitignorePath, 'utf-8');
         const patterns = this.parseIgnoreFile(content);
         this.ignorePatterns.push(...patterns);
-        console.error(`Loaded ${patterns.length} patterns from .gitignore`);
+        if (debugIndex) {
+          console.error(`Loaded ${patterns.length} patterns from .gitignore`);
+        }
       } catch (error) {
         console.error('Error loading .gitignore:', error);
       }
@@ -826,14 +876,18 @@ export class ContextServiceClient {
           const content = fs.readFileSync(contextIgnorePath, 'utf-8');
           const patterns = this.parseIgnoreFile(content);
           this.ignorePatterns.push(...patterns);
-          console.error(`Loaded ${patterns.length} patterns from ${ignoreFileName}`);
+          if (debugIndex) {
+            console.error(`Loaded ${patterns.length} patterns from ${ignoreFileName}`);
+          }
         } catch (error) {
           console.error(`Error loading ${ignoreFileName}:`, error);
         }
       }
     }
 
-    console.error(`Total ignore patterns loaded: ${this.ignorePatterns.length}`);
+    if (debugIndex) {
+      console.error(`Total ignore patterns loaded: ${this.ignorePatterns.length}`);
+    }
     this.ignorePatternsLoaded = true;
   }
 
@@ -969,7 +1023,7 @@ export class ContextServiceClient {
    * Initialize the DirectContext SDK
    * Tries to restore from saved state if available
    */
-  private async ensureInitialized(): Promise<DirectContext> {
+  private async ensureInitialized(options?: { skipAutoIndex?: boolean }): Promise<DirectContext> {
     if (this.context) {
       return this.context;
     }
@@ -980,12 +1034,123 @@ export class ContextServiceClient {
       return this.context!;
     }
 
-    this.initPromise = this.doInitialize();
+    this.initPromise = this.doInitialize(options).finally(() => {
+      // Allow retries after failures and avoid holding on to a resolved promise forever.
+      this.initPromise = null;
+    });
     await this.initPromise;
     return this.context!;
   }
 
-  private async doInitialize(): Promise<void> {
+  private enqueueIndexing<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.indexChain.then(fn, fn);
+    this.indexChain = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  private async runIndexWorker(files?: string[]): Promise<IndexResult> {
+    const startTime = Date.now();
+    return new Promise<IndexResult>((resolve, reject) => {
+      const workerSpec = this.getIndexWorkerSpec();
+      if (!workerSpec) {
+        reject(new Error('Index worker unavailable: missing built worker (dist/worker/IndexWorker.js) and tsx loader is not installed/resolvable.'));
+        return;
+      }
+      const worker = new Worker(workerSpec.url, {
+        execArgv: workerSpec.execArgv,
+        workerData: {
+          workspacePath: this.workspacePath,
+          files,
+        },
+      });
+
+      let done = false;
+      const finalize = async (fn: () => void): Promise<void> => {
+        if (done) return;
+        done = true;
+        try {
+          await worker.terminate();
+        } catch {
+          // ignore
+        }
+        fn();
+      };
+
+      worker.on('message', (message: WorkerMessage) => {
+        if (message.type === 'index_complete') {
+          void finalize(() => {
+            resolve({
+              indexed: message.count,
+              skipped: message.skipped ?? 0,
+              errors: message.errors ?? [],
+              duration: message.duration ?? (Date.now() - startTime),
+            });
+          });
+        } else if (message.type === 'index_error') {
+          void finalize(() => {
+            reject(new Error(message.error));
+          });
+        }
+      });
+
+      worker.on('error', (error) => {
+        void finalize(() => {
+          reject(error);
+        });
+      });
+
+      worker.on('exit', (code) => {
+        if (done) return;
+        if (code !== 0) {
+          void finalize(() => {
+            reject(new Error(`Index worker exited with code ${code}`));
+          });
+        } else {
+          void finalize(() => {
+            resolve({
+              indexed: 0,
+              skipped: 0,
+              errors: [],
+              duration: Date.now() - startTime,
+            });
+          });
+        }
+      });
+    });
+  }
+
+  private getIndexWorkerSpec(): { url: URL; execArgv?: string[] } | null {
+    const jsUrl = new URL('../worker/IndexWorker.js', import.meta.url);
+    const jsPath = fileURLToPath(jsUrl);
+    if (fs.existsSync(jsPath)) {
+      return { url: jsUrl };
+    }
+
+    // Development / tsx execution: spawn the TS worker with tsx loader.
+    // Important: resolve tsx relative to THIS package, not process.cwd(),
+    // since some clients (e.g. GUI wrappers) run with a different cwd.
+    const require = createRequire(import.meta.url);
+    let tsxEntrypoint: string | null = null;
+    try {
+      tsxEntrypoint = require.resolve('tsx');
+    } catch {
+      tsxEntrypoint = null;
+    }
+
+    if (!tsxEntrypoint) {
+      return null;
+    }
+
+    return {
+      url: new URL('../worker/IndexWorker.dev.ts', import.meta.url),
+      execArgv: ['--import', tsxEntrypoint],
+    };
+  }
+
+  private async doInitialize(options?: { skipAutoIndex?: boolean }): Promise<void> {
     const stateFilePath = this.getStateFilePath();
     const offlineMode = this.isOfflineMode();
     const apiUrl = process.env.AUGMENT_API_URL;
@@ -1054,7 +1219,7 @@ export class ContextServiceClient {
     }
 
     // Auto-index workspace if no state file exists (unless skipped)
-    if (!this.skipAutoIndexOnce) {
+    if (!this.skipAutoIndexOnce && !options?.skipAutoIndex) {
       console.error('No existing index found - auto-indexing workspace...');
       try {
         await this.indexWorkspace();
@@ -1083,6 +1248,7 @@ export class ContextServiceClient {
     try {
       const stateFilePath = this.getStateFilePath();
       await this.context.exportToFile(stateFilePath);
+      this.writeIndexFingerprintFile(crypto.randomUUID());
       console.error(`Context state saved to ${stateFilePath}`);
     } catch (error) {
       console.error('Failed to save context state:', error);
@@ -1116,6 +1282,8 @@ export class ContextServiceClient {
     // Load ignore patterns on first call
     this.loadIgnorePatterns();
 
+    const debugIndex = process.env.CE_DEBUG_INDEX === 'true';
+
     const files: string[] = [];
 
     try {
@@ -1132,13 +1300,17 @@ export class ContextServiceClient {
 
         // Skip default excluded directories
         if (entry.isDirectory() && DEFAULT_EXCLUDED_DIRS.has(entry.name)) {
-          console.error(`Skipping excluded directory: ${relativePath}`);
+          if (debugIndex) {
+            console.error(`Skipping excluded directory: ${relativePath}`);
+          }
           continue;
         }
 
         // Check against loaded ignore patterns
         if (this.shouldIgnorePath(relativePath)) {
-          console.error(`Skipping ignored path: ${relativePath}`);
+          if (debugIndex) {
+            console.error(`Skipping ignored path: ${relativePath}`);
+          }
           continue;
         }
 
@@ -1150,7 +1322,9 @@ export class ContextServiceClient {
           try {
             const stats = fs.statSync(fullPath);
             if (stats.size > MAX_FILE_SIZE) {
-              console.error(`Skipping large file during discovery: ${relativePath} (${(stats.size / 1024 / 1024).toFixed(2)}MB > ${MAX_FILE_SIZE / 1024 / 1024}MB limit)`);
+              if (debugIndex) {
+                console.error(`Skipping large file during discovery: ${relativePath} (${(stats.size / 1024 / 1024).toFixed(2)}MB > ${MAX_FILE_SIZE / 1024 / 1024}MB limit)`);
+              }
               continue;
             }
           } catch {
@@ -1247,6 +1421,253 @@ export class ContextServiceClient {
     this.searchCache.clear();
     this.cacheHits = 0;
     this.cacheMisses = 0;
+  }
+
+  private isPersistentCacheEnabled(): boolean {
+    if (process.env.JEST_WORKER_ID) return false;
+    const raw = process.env.CE_PERSIST_SEARCH_CACHE;
+    if (!raw) return true;
+    const normalized = raw.toLowerCase();
+    return !(normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off');
+  }
+
+  private getPersistentCachePath(): string {
+    return path.join(this.workspacePath, SEARCH_CACHE_FILE_NAME);
+  }
+
+  private loadPersistentCacheIfNeeded(): void {
+    if (!this.isPersistentCacheEnabled()) return;
+    if (this.persistentCacheLoaded) return;
+    this.persistentCacheLoaded = true;
+
+    const cachePath = this.getPersistentCachePath();
+    if (!fs.existsSync(cachePath)) return;
+
+    try {
+      const raw = fs.readFileSync(cachePath, 'utf-8');
+      const parsed = JSON.parse(raw) as Partial<PersistentCacheFile>;
+      if (!parsed || typeof parsed !== 'object') return;
+      if (parsed.version !== 1) return;
+      if (!parsed.entries || typeof parsed.entries !== 'object') return;
+
+      const now = Date.now();
+      for (const [key, entry] of Object.entries(parsed.entries)) {
+        if (!entry || typeof entry !== 'object') continue;
+        const ts = (entry as any).timestamp;
+        const data = (entry as any).data;
+        if (typeof ts !== 'number' || !Array.isArray(data)) continue;
+        if (now - ts > PERSISTENT_CACHE_TTL_MS) continue;
+        this.persistentSearchCache.set(key, { timestamp: ts, data });
+      }
+    } catch {
+      // Ignore corrupt cache files.
+    }
+  }
+
+  private schedulePersistentCacheWrite(): void {
+    if (!this.isPersistentCacheEnabled()) return;
+    if (this.persistentCacheWriteTimer) return;
+
+    this.persistentCacheWriteTimer = setTimeout(() => {
+      this.persistentCacheWriteTimer = null;
+      void this.writePersistentCacheToDisk();
+    }, 250);
+  }
+
+  private async writePersistentCacheToDisk(): Promise<void> {
+    try {
+      const cachePath = this.getPersistentCachePath();
+      const tmpPath = `${cachePath}.tmp`;
+
+      const entries: Record<string, CacheEntry<SearchResult[]>> = {};
+      for (const [key, value] of this.persistentSearchCache.entries()) {
+        entries[key] = value;
+      }
+
+      const payload: PersistentCacheFile = { version: 1, entries };
+      await fs.promises.writeFile(tmpPath, JSON.stringify(payload), 'utf-8');
+      await fs.promises.rename(tmpPath, cachePath);
+    } catch {
+      // Best-effort cache; ignore failures.
+    }
+  }
+
+  private writeIndexFingerprintFile(fingerprint: string): void {
+    const fingerprintPath = path.join(this.workspacePath, INDEX_FINGERPRINT_FILE_NAME);
+    try {
+      const tmpPath = `${fingerprintPath}.tmp`;
+      const payload: IndexFingerprintFile = {
+        version: 1,
+        fingerprint,
+        updatedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(tmpPath, JSON.stringify(payload), 'utf-8');
+      fs.renameSync(tmpPath, fingerprintPath);
+    } catch {
+      // Best-effort; ignore failures.
+    }
+  }
+
+  private getIndexFingerprint(): string {
+    try {
+      const statePath = this.getStateFilePath();
+      if (!fs.existsSync(statePath)) return 'no-state';
+
+      const fingerprintPath = path.join(this.workspacePath, INDEX_FINGERPRINT_FILE_NAME);
+      if (fs.existsSync(fingerprintPath)) {
+        try {
+          const raw = fs.readFileSync(fingerprintPath, 'utf-8');
+          const parsed = JSON.parse(raw) as Partial<IndexFingerprintFile>;
+          const fp = (parsed as any)?.fingerprint;
+          if (parsed?.version === 1 && typeof fp === 'string' && fp.length > 0) {
+            return `fingerprint:${fp}`;
+          }
+        } catch {
+          // Ignore parse errors; we'll recreate below.
+        }
+      }
+
+      // Fingerprint file missing/corrupt: create one. This stays stable across restarts
+      // even if the SDK touches the state file timestamps.
+      const fingerprint = crypto.randomUUID();
+      this.writeIndexFingerprintFile(fingerprint);
+      return `fingerprint:${fingerprint}`;
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  private getPersistentSearch(cacheKey: string): SearchResult[] | null {
+    if (!this.isPersistentCacheEnabled()) return null;
+    this.loadPersistentCacheIfNeeded();
+    const entry = this.persistentSearchCache.get(cacheKey);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > PERSISTENT_CACHE_TTL_MS) {
+      this.persistentSearchCache.delete(cacheKey);
+      return null;
+    }
+    // Touch for LRU behavior.
+    this.persistentSearchCache.delete(cacheKey);
+    this.persistentSearchCache.set(cacheKey, entry);
+    return entry.data;
+  }
+
+  private setPersistentSearch(cacheKey: string, results: SearchResult[]): void {
+    if (!this.isPersistentCacheEnabled()) return;
+    this.loadPersistentCacheIfNeeded();
+    // Cap persistent cache size to avoid unbounded growth.
+    const MAX_ENTRIES = 500;
+    if (this.persistentSearchCache.size >= MAX_ENTRIES) {
+      const oldestKey = this.persistentSearchCache.keys().next().value;
+      if (oldestKey) {
+        this.persistentSearchCache.delete(oldestKey);
+      }
+    }
+    this.persistentSearchCache.set(cacheKey, { data: results, timestamp: Date.now() });
+    this.schedulePersistentCacheWrite();
+  }
+
+  // ==========================================================================
+  // Persistent Context Bundle Cache (Phase 1A)
+  // ==========================================================================
+
+  private isPersistentContextCacheEnabled(): boolean {
+    if (process.env.JEST_WORKER_ID) return false;
+    const raw = process.env.CE_PERSIST_CONTEXT_CACHE;
+    if (!raw) return true;
+    const normalized = raw.toLowerCase();
+    return !(normalized === '0' || normalized === 'false' || normalized === 'no' || normalized === 'off');
+  }
+
+  private getPersistentContextCachePath(): string {
+    return path.join(this.workspacePath, CONTEXT_CACHE_FILE_NAME);
+  }
+
+  private loadPersistentContextCacheIfNeeded(): void {
+    if (!this.isPersistentContextCacheEnabled()) return;
+    if (this.persistentContextCacheLoaded) return;
+    this.persistentContextCacheLoaded = true;
+
+    const cachePath = this.getPersistentContextCachePath();
+    if (!fs.existsSync(cachePath)) return;
+
+    try {
+      const raw = fs.readFileSync(cachePath, 'utf-8');
+      const parsed = JSON.parse(raw) as Partial<PersistentContextCacheFile>;
+      if (!parsed || typeof parsed !== 'object') return;
+      if (parsed.version !== 1) return;
+      if (!parsed.entries || typeof parsed.entries !== 'object') return;
+
+      const now = Date.now();
+      for (const [key, entry] of Object.entries(parsed.entries)) {
+        if (!entry || typeof entry !== 'object') continue;
+        const ts = (entry as any).timestamp;
+        const data = (entry as any).data;
+        if (typeof ts !== 'number' || !data || typeof data !== 'object') continue;
+        if (now - ts > PERSISTENT_CACHE_TTL_MS) continue;
+        this.persistentContextCache.set(key, { timestamp: ts, data: data as ContextBundle });
+      }
+    } catch {
+      // Ignore corrupt cache files.
+    }
+  }
+
+  private schedulePersistentContextCacheWrite(): void {
+    if (!this.isPersistentContextCacheEnabled()) return;
+    if (this.persistentContextCacheWriteTimer) return;
+
+    this.persistentContextCacheWriteTimer = setTimeout(() => {
+      this.persistentContextCacheWriteTimer = null;
+      void this.writePersistentContextCacheToDisk();
+    }, 250);
+  }
+
+  private async writePersistentContextCacheToDisk(): Promise<void> {
+    try {
+      const cachePath = this.getPersistentContextCachePath();
+      const tmpPath = `${cachePath}.tmp`;
+
+      const entries: Record<string, CacheEntry<ContextBundle>> = {};
+      for (const [key, value] of this.persistentContextCache.entries()) {
+        entries[key] = value;
+      }
+
+      const payload: PersistentContextCacheFile = { version: 1, entries };
+      await fs.promises.writeFile(tmpPath, JSON.stringify(payload), 'utf-8');
+      await fs.promises.rename(tmpPath, cachePath);
+    } catch {
+      // Best-effort cache; ignore failures.
+    }
+  }
+
+  private getPersistentContextBundle(cacheKey: string): ContextBundle | null {
+    if (!this.isPersistentContextCacheEnabled()) return null;
+    this.loadPersistentContextCacheIfNeeded();
+    const entry = this.persistentContextCache.get(cacheKey);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > PERSISTENT_CACHE_TTL_MS) {
+      this.persistentContextCache.delete(cacheKey);
+      return null;
+    }
+    // Touch for LRU behavior.
+    this.persistentContextCache.delete(cacheKey);
+    this.persistentContextCache.set(cacheKey, entry);
+    return entry.data;
+  }
+
+  private setPersistentContextBundle(cacheKey: string, bundle: ContextBundle): void {
+    if (!this.isPersistentContextCacheEnabled()) return;
+    this.loadPersistentContextCacheIfNeeded();
+
+    const MAX_ENTRIES = 100;
+    if (this.persistentContextCache.size >= MAX_ENTRIES) {
+      const oldestKey = this.persistentContextCache.keys().next().value;
+      if (oldestKey) {
+        this.persistentContextCache.delete(oldestKey);
+      }
+    }
+    this.persistentContextCache.set(cacheKey, { data: bundle, timestamp: Date.now() });
+    this.schedulePersistentContextCacheWrite();
   }
 
   // ==========================================================================
@@ -1378,7 +1799,8 @@ export class ContextServiceClient {
    * Index the workspace directory using DirectContext SDK
    */
   async indexWorkspace(): Promise<IndexResult> {
-    const startTime = Date.now();
+    return this.enqueueIndexing(async () => {
+      const startTime = Date.now();
 
     if (this.isOfflineMode()) {
       const message = 'Indexing is disabled while CONTEXT_ENGINE_OFFLINE_ONLY is enabled.';
@@ -1387,12 +1809,57 @@ export class ContextServiceClient {
       throw new Error(message);
     }
 
-    this.updateIndexStatus({ status: 'indexing', lastError: undefined });
-    console.error(`Indexing workspace: ${this.workspacePath}`);
-    console.error(`API URL: ${process.env.AUGMENT_API_URL || '(default)'}`);
-    console.error(`API Token: ${process.env.AUGMENT_API_TOKEN ? '(set)' : '(NOT SET)'}`);
+      this.updateIndexStatus({ status: 'indexing', lastError: undefined });
+      console.error(`Indexing workspace: ${this.workspacePath}`);
+      console.error(`API URL: ${process.env.AUGMENT_API_URL || '(default)'}`);
+      console.error(`API Token: ${process.env.AUGMENT_API_TOKEN ? '(set)' : '(NOT SET)'}`);
 
-    const context = await this.ensureInitialized();
+      const debugIndex = process.env.CE_DEBUG_INDEX === 'true';
+
+      const useWorker =
+        process.env.CE_INDEX_USE_WORKER !== 'false' &&
+        // Avoid worker-based indexing in Jest unit tests (worker won't inherit mocks).
+        !process.env.JEST_WORKER_ID;
+
+      if (useWorker) {
+        let result: IndexResult | null = null;
+        try {
+          result = await this.runIndexWorker();
+        } catch (e) {
+          console.error('[indexWorkspace] Worker indexing unavailable; falling back to in-process indexing:', e);
+          result = null;
+        }
+
+        if (!result) {
+          // fall through to in-process path
+        } else {
+
+          if (result.indexed > 0) {
+            this.updateIndexStatus({
+              status: result.errors.length ? 'error' : 'idle',
+              lastIndexed: new Date().toISOString(),
+              fileCount: result.indexed,
+              lastError: result.errors.length ? result.errors[result.errors.length - 1] : undefined,
+            });
+          } else {
+            this.updateIndexStatus({
+              status: 'error',
+              lastError: result.errors[0] || 'No files could be indexed',
+              fileCount: 0,
+            });
+          }
+
+          // Ensure the in-memory context reflects the worker-written state file.
+          this.context = null;
+          this.initPromise = null;
+          this.clearCache();
+          await this.ensureInitialized({ skipAutoIndex: true });
+
+          return result;
+        }
+      }
+
+      const context = await this.ensureInitialized({ skipAutoIndex: true });
 
     // Discover all indexable files
     const filePaths = await this.discoverFiles(this.workspacePath);
@@ -1413,18 +1880,20 @@ export class ContextServiceClient {
       };
     }
 
-    // Log all discovered files for debugging (only first 50 to avoid log spam)
-    console.error('Files to index (showing first 50):');
-    for (const fp of filePaths.slice(0, 50)) {
-      console.error(`  - ${fp}`);
-    }
-    if (filePaths.length > 50) {
-      console.error(`  ... and ${filePaths.length - 50} more files`);
+    if (debugIndex) {
+      // Log all discovered files for debugging (only first 50 to avoid log spam)
+      console.error('Files to index (showing first 50):');
+      for (const fp of filePaths.slice(0, 50)) {
+        console.error(`  - ${fp}`);
+      }
+      if (filePaths.length > 50) {
+        console.error(`  ... and ${filePaths.length - 50} more files`);
+      }
     }
 
     // STREAMING APPROACH: Read and index files in batches to minimize memory usage
     // Instead of loading all files into memory, we read files just-in-time for each batch
-    const BATCH_SIZE = 10; // Reduced batch size for better error isolation and memory efficiency
+    const BATCH_SIZE = Number.parseInt(process.env.CE_INDEX_BATCH_SIZE ?? '10', 10) || 10;
     const totalBatches = Math.ceil(filePaths.length / BATCH_SIZE);
     let successCount = 0;
     let errorCount = 0;
@@ -1452,33 +1921,42 @@ export class ContextServiceClient {
         continue;
       }
 
-      console.error(`\nIndexing batch ${batchNum}/${totalBatches}:`);
-      for (const file of batch) {
-        console.error(`  - ${file.path} (${file.contents.length} chars)`);
+      if (debugIndex) {
+        console.error(`\nIndexing batch ${batchNum}/${totalBatches}:`);
+        for (const file of batch) {
+          console.error(`  - ${file.path} (${file.contents.length} chars)`);
+        }
       }
 
       try {
         // Don't wait for indexing on intermediate batches
         await context.addToIndex(batch, { waitForIndexing: isLastBatch });
         successCount += batch.length;
-        console.error(`  ✓ Batch ${batchNum} indexed successfully`);
+        if (debugIndex) {
+          console.error(`  ✓ Batch ${batchNum} indexed successfully`);
+        }
       } catch (error) {
-        errorCount += batch.length;
         errors.push(`Batch ${batchNum}: ${error instanceof Error ? error.message : String(error)}`);
         console.error(`  ✗ Batch ${batchNum} failed:`, error);
 
         // Try indexing files individually to isolate the problematic file
-        console.error(`  Attempting individual file indexing for batch ${batchNum}...`);
+        if (debugIndex) {
+          console.error(`  Attempting individual file indexing for batch ${batchNum}...`);
+        }
         for (const file of batch) {
           try {
             await context.addToIndex([file], { waitForIndexing: false });
             successCount++;
-            console.error(`    ✓ ${file.path}`);
+            if (debugIndex) {
+              console.error(`    ✓ ${file.path}`);
+            }
           } catch (fileError) {
-            console.error(`    ✗ ${file.path} FAILED:`, fileError);
-            // Log file content preview for debugging
-            const preview = file.contents.substring(0, 200).replace(/\n/g, '\\n');
-            console.error(`      Content preview: ${preview}...`);
+            errorCount++;
+            if (debugIndex) {
+              console.error(`    ✗ ${file.path} FAILED:`, fileError);
+            } else {
+              console.error(`    ✗ ${file.path} FAILED`);
+            }
             errors.push(`${file.path}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
           }
         }
@@ -1529,12 +2007,13 @@ export class ContextServiceClient {
     this.clearCache();
     console.error('Workspace indexing finished');
 
-    return {
-      indexed: successCount,
-      skipped: skippedCount + errorCount,
-      errors,
-      duration: Date.now() - startTime,
-    };
+      return {
+        indexed: successCount,
+        skipped: skippedCount + errorCount,
+        errors,
+        duration: Date.now() - startTime,
+      };
+    });
   }
 
   /**
@@ -1548,38 +2027,78 @@ export class ContextServiceClient {
       throw new Error(message);
     }
 
+    const workerSpec = this.getIndexWorkerSpec();
+    if (!workerSpec) {
+      console.error('[indexWorkspaceInBackground] Index worker unavailable; falling back to in-process indexing.');
+      await this.indexWorkspace();
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       this.updateIndexStatus({ status: 'indexing', lastError: undefined });
-      const worker = new Worker(new URL('../worker/IndexWorker.js', import.meta.url), {
+      const worker = new Worker(workerSpec.url, {
+        execArgv: workerSpec.execArgv,
         workerData: {
           workspacePath: this.workspacePath,
         },
       });
 
+      let settled = false;
       worker.on('message', (message: WorkerMessage) => {
         if (message.type === 'index_complete') {
-          this.updateIndexStatus({
-            status: message.errors?.length ? 'error' : 'idle',
-            lastIndexed: new Date().toISOString(),
-            fileCount: message.count,
-            lastError: message.errors?.[message.errors.length - 1],
+          void (async () => {
+            if (settled) return;
+            settled = true;
+
+            this.updateIndexStatus({
+              status: message.errors?.length ? 'error' : 'idle',
+              lastIndexed: new Date().toISOString(),
+              fileCount: message.count,
+              lastError: message.errors?.[message.errors.length - 1],
+            });
+
+            // Worker updates the persisted state file, but this instance holds an in-memory context.
+            // Reset and reload so subsequent searches use the fresh index.
+            this.context = null;
+            this.initPromise = null;
+            this.clearCache();
+            await this.ensureInitialized();
+
+            await worker.terminate();
+            resolve();
+          })().catch(async (e) => {
+            try {
+              await worker.terminate();
+            } catch {
+              // ignore
+            }
+            reject(e);
           });
-          resolve();
         } else if (message.type === 'index_error') {
+          if (settled) return;
+          settled = true;
           this.updateIndexStatus({
             status: 'error',
             lastError: message.error,
           });
-          reject(new Error(message.error));
+          void worker.terminate().finally(() => {
+            reject(new Error(message.error));
+          });
         }
       });
 
       worker.on('error', (error) => {
+        if (settled) return;
+        settled = true;
         this.updateIndexStatus({ status: 'error', lastError: String(error) });
-        reject(error);
+        void worker.terminate().finally(() => {
+          reject(error);
+        });
       });
 
       worker.on('exit', (code) => {
+        if (settled) return;
+        settled = true;
         if (code !== 0) {
           const err = new Error(`Index worker exited with code ${code}`);
           this.updateIndexStatus({ status: 'error', lastError: err.message });
@@ -1602,115 +2121,162 @@ export class ContextServiceClient {
    * Incrementally index a list of file paths (relative to workspace)
    */
   async indexFiles(filePaths: string[]): Promise<IndexResult> {
-    const startTime = Date.now();
+    return this.enqueueIndexing(async () => {
+      const startTime = Date.now();
 
-    if (this.isOfflineMode()) {
-      const message = 'Incremental indexing is disabled while CONTEXT_ENGINE_OFFLINE_ONLY is enabled.';
-      console.error(message);
-      this.updateIndexStatus({ status: 'error', lastError: message });
-      throw new Error(message);
-    }
-
-    if (!filePaths || filePaths.length === 0) {
-      return { indexed: 0, skipped: 0, errors: ['No files provided'], duration: 0 };
-    }
-
-    this.updateIndexStatus({ status: 'indexing', lastError: undefined });
-    const context = await this.ensureInitialized();
-    this.loadIgnorePatterns();
-
-    const uniquePaths = Array.from(new Set(filePaths));
-    const files: Array<{ path: string; contents: string }> = [];
-    const errors: string[] = [];
-    let skipped = 0;
-
-    for (const rawPath of uniquePaths) {
-      // Normalize and ensure path stays within workspace
-      const relativePath = path.isAbsolute(rawPath)
-        ? path.relative(this.workspacePath, rawPath)
-        : rawPath;
-
-      if (!relativePath || relativePath.startsWith('..')) {
-        skipped++;
-        continue;
+      if (this.isOfflineMode()) {
+        const message = 'Incremental indexing is disabled while CONTEXT_ENGINE_OFFLINE_ONLY is enabled.';
+        console.error(message);
+        this.updateIndexStatus({ status: 'error', lastError: message });
+        throw new Error(message);
       }
 
-      if (this.shouldIgnorePath(relativePath)) {
-        skipped++;
-        continue;
+      if (!filePaths || filePaths.length === 0) {
+        return { indexed: 0, skipped: 0, errors: ['No files provided'], duration: 0 };
       }
 
-      if (!this.shouldIndexFile(relativePath)) {
-        skipped++;
-        continue;
+      const uniquePaths = Array.from(new Set(filePaths));
+      const useWorker =
+        process.env.CE_INDEX_USE_WORKER !== 'false' &&
+        // Avoid worker-based indexing in Jest unit tests (worker won't inherit mocks).
+        !process.env.JEST_WORKER_ID;
+      const threshold =
+        Number.parseInt(process.env.CE_INDEX_FILES_WORKER_THRESHOLD ?? '200', 10) || 200;
+
+      if (useWorker && uniquePaths.length >= threshold) {
+        this.updateIndexStatus({ status: 'indexing', lastError: undefined });
+        let result: IndexResult | null = null;
+        try {
+          result = await this.runIndexWorker(uniquePaths);
+        } catch (e) {
+          console.error('[indexFiles] Worker indexing unavailable; falling back to in-process indexing:', e);
+          result = null;
+        }
+
+        if (!result) {
+          // fall through to in-process path
+        } else {
+
+          if (result.indexed > 0) {
+            this.updateIndexStatus({
+              status: result.errors.length ? 'error' : 'idle',
+              lastIndexed: new Date().toISOString(),
+              fileCount: Math.max(this.indexStatus.fileCount, result.indexed),
+              lastError: result.errors.length ? result.errors[result.errors.length - 1] : undefined,
+            });
+          } else {
+            this.updateIndexStatus({
+              status: 'error',
+              lastError: result.errors[0] || 'Incremental indexing failed',
+            });
+          }
+
+          // Ensure the in-memory context reflects the worker-written state file.
+          this.context = null;
+          this.initPromise = null;
+          this.clearCache();
+          await this.ensureInitialized({ skipAutoIndex: true });
+
+          return result;
+        }
       }
 
-      const contents = this.readFileContents(relativePath);
-      if (contents !== null) {
-        files.push({ path: relativePath, contents });
-      } else {
-        skipped++;
+      this.updateIndexStatus({ status: 'indexing', lastError: undefined });
+      const context = await this.ensureInitialized({ skipAutoIndex: true });
+      this.loadIgnorePatterns();
+
+      const files: Array<{ path: string; contents: string }> = [];
+      const errors: string[] = [];
+      let skipped = 0;
+
+      for (const rawPath of uniquePaths) {
+        // Normalize and ensure path stays within workspace
+        const relativePath = path.isAbsolute(rawPath)
+          ? path.relative(this.workspacePath, rawPath)
+          : rawPath;
+
+        if (!relativePath || relativePath.startsWith('..')) {
+          skipped++;
+          continue;
+        }
+
+        if (this.shouldIgnorePath(relativePath)) {
+          skipped++;
+          continue;
+        }
+
+        if (!this.shouldIndexFile(relativePath)) {
+          skipped++;
+          continue;
+        }
+
+        const contents = this.readFileContents(relativePath);
+        if (contents !== null) {
+          files.push({ path: relativePath, contents });
+        } else {
+          skipped++;
+        }
       }
-    }
 
-    if (files.length === 0) {
-      this.updateIndexStatus({
-        status: 'error',
-        lastError: 'No indexable file changes provided',
-      });
-      return {
-        indexed: 0,
-        skipped,
-        errors: ['No indexable file changes provided'],
-        duration: Date.now() - startTime,
-      };
-    }
+      if (files.length === 0) {
+        this.updateIndexStatus({
+          status: 'error',
+          lastError: 'No indexable file changes provided',
+        });
+        return {
+          indexed: 0,
+          skipped,
+          errors: ['No indexable file changes provided'],
+          duration: Date.now() - startTime,
+        };
+      }
 
-    let successCount = 0;
-    const BATCH_SIZE = 10;
-    for (let i = 0; i < files.length; i += BATCH_SIZE) {
-      const batch = files.slice(i, i + BATCH_SIZE);
-      const isLastBatch = i + BATCH_SIZE >= files.length;
-      try {
-        await context.addToIndex(batch, { waitForIndexing: isLastBatch });
-        successCount += batch.length;
-      } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
-        // Attempt per-file indexing
-        for (const file of batch) {
-          try {
-            await context.addToIndex([file], { waitForIndexing: false });
-            successCount++;
-          } catch (fileError) {
-            errors.push(`${file.path}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+      let successCount = 0;
+      const BATCH_SIZE = Number.parseInt(process.env.CE_INDEX_BATCH_SIZE ?? '10', 10) || 10;
+      for (let i = 0; i < files.length; i += BATCH_SIZE) {
+        const batch = files.slice(i, i + BATCH_SIZE);
+        const isLastBatch = i + BATCH_SIZE >= files.length;
+        try {
+          await context.addToIndex(batch, { waitForIndexing: isLastBatch });
+          successCount += batch.length;
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+          // Attempt per-file indexing
+          for (const file of batch) {
+            try {
+              await context.addToIndex([file], { waitForIndexing: false });
+              successCount++;
+            } catch (fileError) {
+              errors.push(`${file.path}: ${fileError instanceof Error ? fileError.message : String(fileError)}`);
+            }
           }
         }
       }
-    }
 
-    if (successCount > 0) {
-      await this.saveState();
-      this.updateIndexStatus({
-        status: errors.length ? 'error' : 'idle',
-        lastIndexed: new Date().toISOString(),
-        fileCount: Math.max(this.indexStatus.fileCount, successCount),
-        lastError: errors[errors.length - 1],
-      });
-    } else {
-      this.updateIndexStatus({
-        status: 'error',
-        lastError: errors[0] || 'Incremental indexing failed',
-      });
-    }
+      if (successCount > 0) {
+        await this.saveState();
+        this.updateIndexStatus({
+          status: errors.length ? 'error' : 'idle',
+          lastIndexed: new Date().toISOString(),
+          fileCount: Math.max(this.indexStatus.fileCount, successCount),
+          lastError: errors[errors.length - 1],
+        });
+      } else {
+        this.updateIndexStatus({
+          status: 'error',
+          lastError: errors[0] || 'Incremental indexing failed',
+        });
+      }
 
-    this.clearCache();
+      this.clearCache();
 
-    return {
-      indexed: successCount,
-      skipped,
-      errors,
-      duration: Date.now() - startTime,
-    };
+      return {
+        indexed: successCount,
+        skipped,
+        errors,
+        duration: Date.now() - startTime,
+      };
+    });
   }
 
   /**
@@ -1733,6 +2299,16 @@ export class ContextServiceClient {
       }
     }
 
+    const fingerprintPath = path.join(this.workspacePath, INDEX_FINGERPRINT_FILE_NAME);
+    if (fs.existsSync(fingerprintPath)) {
+      try {
+        fs.unlinkSync(fingerprintPath);
+        console.error(`Deleted index fingerprint file: ${fingerprintPath}`);
+      } catch (error) {
+        console.error('Failed to delete index fingerprint file:', error);
+      }
+    }
+
     // Clear caches
     this.clearCache();
     this.ignorePatternsLoaded = false;
@@ -1749,37 +2325,77 @@ export class ContextServiceClient {
   /**
    * Perform semantic search using DirectContext SDK
    */
-  async semanticSearch(query: string, topK: number = 10): Promise<SearchResult[]> {
+  async semanticSearch(
+    query: string,
+    topK: number = 10,
+    options?: { bypassCache?: boolean; maxOutputLength?: number }
+  ): Promise<SearchResult[]> {
+    const debugSearch = process.env.CE_DEBUG_SEARCH === 'true';
+    const bypassCache = options?.bypassCache ?? false;
+
     // Use commit-aware cache key when reactive mode is enabled
-    const cacheKey = this.getCommitAwareCacheKey(query, topK);
-    const cached = this.getCachedSearch(cacheKey);
-    if (cached) {
-      this.cacheHits++;
-      console.error(`[semanticSearch] Cache hit for query: ${query}`);
-      return cached;
+    const memoryCacheKey = this.getCommitAwareCacheKey(query, topK);
+
+    if (!bypassCache) {
+      const cached = this.getCachedSearch(memoryCacheKey);
+      if (cached) {
+        this.cacheHits++;
+        if (debugSearch) {
+          console.error(`[semanticSearch] Cache hit for query: ${query}`);
+        }
+        return cached;
+      }
+    }
+
+    const context = await this.ensureInitialized();
+
+    const indexFingerprint = this.getIndexFingerprint();
+    const persistentCacheKey = (indexFingerprint !== 'no-state' && indexFingerprint !== 'unknown')
+      ? `${indexFingerprint}:${memoryCacheKey}`
+      : null;
+
+    if (!bypassCache && persistentCacheKey) {
+      const persistent = this.getPersistentSearch(persistentCacheKey);
+      if (persistent) {
+        this.cacheHits++;
+        if (debugSearch) {
+          console.error(`[semanticSearch] Persistent cache hit for query: ${query}`);
+        }
+        // Populate in-memory cache for fast subsequent calls.
+        this.setCachedSearch(memoryCacheKey, persistent);
+        return persistent;
+      }
     }
 
     this.cacheMisses++;
-    const context = await this.ensureInitialized();
 
     try {
       console.error(`[semanticSearch] Searching for: ${query}`);
 
       // Use the SDK's search method
       const formattedResults = await context.search(query, {
-        maxOutputLength: topK * 2000, // Approximate output length based on topK
+        maxOutputLength: options?.maxOutputLength ?? (topK * 2000), // Approximate output length based on topK
       });
 
-      console.error(`[semanticSearch] Raw results length: ${formattedResults?.length || 0}`);
-      console.error(`[semanticSearch] Raw results preview: ${formattedResults?.substring(0, 200) || '(empty)'}`);
+      if (debugSearch) {
+        console.error(`[semanticSearch] Raw results length: ${formattedResults?.length || 0}`);
+        console.error(`[semanticSearch] Raw results preview: ${formattedResults?.substring(0, 200) || '(empty)'}`);
+      }
 
       // Parse the formatted results into SearchResult objects
       const searchResults = this.parseFormattedResults(formattedResults, topK);
 
-      console.error(`[semanticSearch] Parsed ${searchResults.length} results`);
+      if (debugSearch) {
+        console.error(`[semanticSearch] Parsed ${searchResults.length} results`);
+      }
 
-      // Cache results
-      this.setCachedSearch(cacheKey, searchResults);
+      if (!bypassCache) {
+        // Cache results
+        this.setCachedSearch(memoryCacheKey, searchResults);
+        if (persistentCacheKey) {
+          this.setPersistentSearch(persistentCacheKey, searchResults);
+        }
+      }
       return searchResults;
     } catch (error) {
       console.error('Search failed:', error);
@@ -2230,11 +2846,43 @@ export class ContextServiceClient {
       minRelevance = 0.3,
       includeSummaries = true,
       includeMemories = true,
+      bypassCache = false,
     } = options;
+
+    const normalizedCacheOptions = {
+      maxFiles,
+      tokenBudget,
+      includeRelated,
+      minRelevance,
+      includeSummaries,
+      includeMemories,
+    };
+
+    const commitPrefix = (this.commitCacheEnabled && this.currentCommitHash)
+      ? `${this.currentCommitHash.substring(0, 12)}:`
+      : '';
+    const indexFingerprint = this.getIndexFingerprint();
+    const persistentCacheKey = (indexFingerprint !== 'no-state' && indexFingerprint !== 'unknown')
+      ? `${indexFingerprint}:${commitPrefix}context:${query}:${JSON.stringify(normalizedCacheOptions)}`
+      : null;
+
+    if (!bypassCache) {
+      if (persistentCacheKey) {
+        const persistent = this.getPersistentContextBundle(persistentCacheKey);
+        if (persistent) {
+          return persistent;
+        }
+      }
+    }
+
+    const semanticSearch = (q: string, k: number) =>
+      bypassCache
+        ? this.semanticSearch(q, k, { bypassCache: true })
+        : this.semanticSearch(q, k);
 
     // Perform semantic search and memory retrieval in parallel
     const [searchResults, memories] = await Promise.all([
-      this.semanticSearch(query, maxFiles * 3),
+      semanticSearch(query, maxFiles * 3),
       includeMemories ? this.getRelevantMemories(query, 5) : Promise.resolve([]),
     ]);
 
@@ -2391,7 +3039,7 @@ export class ContextServiceClient {
 
     const searchTimeMs = Date.now() - startTime;
 
-    return {
+    const bundle: ContextBundle = {
       summary,
       query,
       files,
@@ -2407,6 +3055,11 @@ export class ContextServiceClient {
         memoriesIncluded: memories.length,
       },
     };
+
+    if (!bypassCache && persistentCacheKey) {
+      this.setPersistentContextBundle(persistentCacheKey, bundle);
+    }
+    return bundle;
   }
 
   /**

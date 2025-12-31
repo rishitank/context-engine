@@ -6,6 +6,10 @@ export async function internalContextBundle(
   serviceClient: ContextServiceClient,
   options: ContextOptions
 ): Promise<ContextBundle> {
+  if (options?.bypassCache) {
+    return serviceClient.getContextForPrompt(query, options);
+  }
+
   const cache = getInternalCache();
   const cacheKey = `context:${query}:${JSON.stringify(options ?? {})}`;
   const cached = cache.get<ContextBundle>(cacheKey);

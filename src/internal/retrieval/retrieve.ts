@@ -6,6 +6,12 @@ import { ExpandedQuery, InternalSearchResult, RetrievalOptions } from './types.j
 
 const DISABLED_VALUES = new Set(['0', 'false', 'off', 'disable', 'disabled']);
 
+type NormalizedRetrievalOptions =
+  Omit<Required<RetrievalOptions>, 'bypassCache' | 'maxOutputLength'> & {
+    bypassCache: boolean;
+    maxOutputLength?: number;
+  };
+
 export function isRetrievalPipelineEnabled(): boolean {
   const raw = process.env.CONTEXT_ENGINE_RETRIEVAL_PIPELINE;
   if (!raw) {
@@ -14,7 +20,7 @@ export function isRetrievalPipelineEnabled(): boolean {
   return !DISABLED_VALUES.has(raw.toLowerCase());
 }
 
-function normalizeOptions(options: RetrievalOptions | undefined): Required<RetrievalOptions> {
+function normalizeOptions(options: RetrievalOptions | undefined): NormalizedRetrievalOptions {
   const topK = Math.max(1, Math.min(50, options?.topK ?? 10));
   const perQueryTopK = Math.max(1, Math.min(50, options?.perQueryTopK ?? topK));
   const maxVariants = Math.max(1, Math.min(6, options?.maxVariants ?? 4));
@@ -34,6 +40,8 @@ function normalizeOptions(options: RetrievalOptions | undefined): Required<Retri
     enableDedupe: options?.enableDedupe ?? true,
     enableRerank: options?.enableRerank ?? true,
     log: options?.log ?? false,
+    bypassCache: options?.bypassCache ?? false,
+    maxOutputLength: options?.maxOutputLength,
   };
 }
 
@@ -50,7 +58,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
   ]);
 }
 
-function buildExpandedQueries(query: string, options: Required<RetrievalOptions>): ExpandedQuery[] {
+function buildExpandedQueries(query: string, options: NormalizedRetrievalOptions): ExpandedQuery[] {
   if (!options.enableExpansion) {
     return [{ query, source: 'original', weight: 1, index: 0 }];
   }
@@ -69,9 +77,17 @@ export async function retrieve(
   options?: RetrievalOptions
 ): Promise<SearchResult[]> {
   const settings = normalizeOptions(options);
+  const semanticSearchOptions =
+    settings.bypassCache || settings.maxOutputLength !== undefined
+      ? { bypassCache: settings.bypassCache, maxOutputLength: settings.maxOutputLength }
+      : undefined;
+  const semanticSearch = (q: string, k: number) =>
+    semanticSearchOptions
+      ? serviceClient.semanticSearch(q, k, semanticSearchOptions)
+      : serviceClient.semanticSearch(q, k);
 
   if (!isRetrievalPipelineEnabled()) {
-    return serviceClient.semanticSearch(query, settings.topK);
+    return semanticSearch(query, settings.topK);
   }
 
   const expandedQueries = buildExpandedQueries(query, settings);
@@ -80,7 +96,7 @@ export async function retrieve(
   for (const variant of expandedQueries) {
     try {
       const results = await withTimeout(
-        serviceClient.semanticSearch(variant.query, settings.perQueryTopK),
+        semanticSearch(variant.query, settings.perQueryTopK),
         settings.timeoutMs,
         []
       );

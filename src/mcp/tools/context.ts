@@ -26,6 +26,7 @@ export interface GetContextArgs {
   token_budget?: number;
   include_related?: boolean;
   min_relevance?: number;
+  bypass_cache?: boolean;
 }
 
 /**
@@ -84,6 +85,7 @@ export async function handleGetContext(
     token_budget = 8000,
     include_related = true,
     min_relevance = 0.3,
+    bypass_cache = false,
   } = args;
 
   // Validate inputs
@@ -103,6 +105,10 @@ export async function handleGetContext(
     throw new Error('Invalid token_budget parameter: must be a number between 500 and 100000');
   }
 
+  if (bypass_cache !== undefined && typeof bypass_cache !== 'boolean') {
+    throw new Error('Invalid bypass_cache parameter: must be a boolean');
+  }
+
   // Build options
   const options: ContextOptions = {
     maxFiles: max_files,
@@ -110,6 +116,7 @@ export async function handleGetContext(
     includeRelated: include_related,
     minRelevance: min_relevance,
     includeSummaries: true,
+    bypassCache: bypass_cache,
   };
 
   const contextBundle = await internalContextBundle(query, serviceClient, options);
@@ -295,8 +302,12 @@ Use this tool when you need to:
         description: 'Minimum relevance score (0-1) to include a file (default: 0.3)',
         default: 0.3,
       },
+      bypass_cache: {
+        type: 'boolean',
+        description: 'Bypass caches (forces fresh retrieval; useful for benchmarking/debugging).',
+        default: false,
+      },
     },
     required: ['query'],
   },
 };
-

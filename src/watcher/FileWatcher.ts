@@ -11,6 +11,8 @@ export class FileWatcher {
   private watcher: chokidar.FSWatcher | null = null;
   private pendingChanges: Map<string, FileChange> = new Map();
   private debounceTimer: NodeJS.Timeout | null = null;
+  private flushInFlight: Promise<void> | null = null;
+  private flushQueued: boolean = false;
   private lastFlush: string | undefined;
 
   private readonly root: string;
@@ -51,6 +53,8 @@ export class FileWatcher {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+    // Flush any pending changes before closing to avoid losing events.
+    await this.requestFlush();
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = null;
@@ -78,8 +82,28 @@ export class FileWatcher {
       clearTimeout(this.debounceTimer);
     }
     this.debounceTimer = setTimeout(() => {
-      void this.flush();
+      void this.requestFlush();
     }, this.options.debounceMs);
+  }
+
+  private async requestFlush(): Promise<void> {
+    if (this.pendingChanges.size === 0) return;
+
+    if (this.flushInFlight) {
+      this.flushQueued = true;
+      return;
+    }
+
+    this.flushInFlight = this.flush();
+    try {
+      await this.flushInFlight;
+    } finally {
+      this.flushInFlight = null;
+      if (this.flushQueued) {
+        this.flushQueued = false;
+        await this.requestFlush();
+      }
+    }
   }
 
   private async flush(): Promise<void> {

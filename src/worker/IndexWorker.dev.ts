@@ -1,6 +1,6 @@
 import { parentPort, workerData } from 'worker_threads';
-import type { WorkerPayload, WorkerMessage } from './messages.js';
-import { ContextServiceClient } from '../mcp/serviceClient.js';
+import type { WorkerPayload, WorkerMessage } from './messages.ts';
+import { ContextServiceClient } from '../mcp/serviceClient.ts';
 
 export async function runIndexJob(
   payload: WorkerPayload,
@@ -26,16 +26,16 @@ export async function runIndexJob(
       ? await client.indexFiles(payload.files)
       : await client.indexWorkspace();
 
-   send({
-     type: 'index_complete',
-     duration: result.duration,
-     count: result.indexed,
-     skipped: result.skipped,
-     errors: result.errors,
-   });
- } catch (error) {
-   send({
-     type: 'index_error',
+    send({
+      type: 'index_complete',
+      duration: result.duration,
+      count: result.indexed,
+      skipped: result.skipped,
+      errors: result.errors,
+    });
+  } catch (error) {
+    send({
+      type: 'index_error',
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -45,3 +45,4 @@ const port = parentPort;
 if (port && workerData) {
   void runIndexJob(workerData as WorkerPayload, (message) => port.postMessage(message));
 }
+

@@ -20,6 +20,12 @@ import { internalRetrieveCode } from '../../internal/handlers/retrieval.js';
 export interface SemanticSearchArgs {
   query: string;
   top_k?: number;
+  /** fast: default pipeline; deep: more expansion + larger per-variant budget */
+  mode?: 'fast' | 'deep';
+  /** When true, bypass caches for this request */
+  bypass_cache?: boolean;
+  /** Max time to spend on retrieval pipeline (ms). 0/undefined means no timeout. */
+  timeout_ms?: number;
 }
 
 /**
@@ -37,7 +43,7 @@ export async function handleSemanticSearch(
   args: SemanticSearchArgs,
   serviceClient: ContextServiceClient
 ): Promise<string> {
-  const { query, top_k = 10 } = args;
+  const { query, top_k = 10, mode = 'fast', bypass_cache = false, timeout_ms } = args;
 
   // Validate inputs
   if (!query || typeof query !== 'string') {
@@ -52,7 +58,42 @@ export async function handleSemanticSearch(
     throw new Error('Invalid top_k parameter: must be a number between 1 and 50');
   }
 
-  const retrieval = await internalRetrieveCode(query, serviceClient, { topK: top_k });
+  if (mode !== 'fast' && mode !== 'deep') {
+    throw new Error('Invalid mode parameter: must be "fast" or "deep"');
+  }
+
+  if (bypass_cache !== undefined && typeof bypass_cache !== 'boolean') {
+    throw new Error('Invalid bypass_cache parameter: must be a boolean');
+  }
+
+  if (timeout_ms !== undefined && (typeof timeout_ms !== 'number' || timeout_ms < 0 || timeout_ms > 120000)) {
+    throw new Error('Invalid timeout_ms parameter: must be a number between 0 and 120000');
+  }
+
+  const effectiveTimeoutMs = timeout_ms ?? (bypass_cache ? 10000 : 0);
+
+  const retrievalOptions =
+    mode === 'deep'
+      ? {
+          topK: top_k,
+          perQueryTopK: Math.min(50, top_k * 3),
+          maxVariants: 6,
+          timeoutMs: effectiveTimeoutMs,
+          bypassCache: bypass_cache,
+          maxOutputLength: top_k * 4000,
+          enableExpansion: true,
+        }
+      : {
+          topK: top_k,
+          perQueryTopK: top_k,
+          maxVariants: 1,
+          timeoutMs: effectiveTimeoutMs,
+          bypassCache: bypass_cache,
+          maxOutputLength: top_k * 2000,
+          enableExpansion: false,
+        };
+
+  const retrieval = await internalRetrieveCode(query, serviceClient, retrievalOptions);
   const results = retrieval.results;
 
   // Format results for agent consumption
@@ -166,6 +207,22 @@ For comprehensive context with file summaries and related files, use get_context
         type: 'number',
         description: 'Number of results to return (default: 10, max: 50)',
         default: 10,
+      },
+      mode: {
+        type: 'string',
+        description: 'Search mode: "fast" (default) uses cached results and moderate expansion; "deep" increases expansion/budget for better recall at higher latency.',
+        default: 'fast',
+        enum: ['fast', 'deep'],
+      },
+      bypass_cache: {
+        type: 'boolean',
+        description: 'When true, bypass caches for this call (useful for benchmarking or ensuring freshest results).',
+        default: false,
+      },
+      timeout_ms: {
+        type: 'number',
+        description: 'Max time to spend on the retrieval pipeline in milliseconds. 0/undefined means no timeout.',
+        default: 0,
       },
     },
     required: ['query'],

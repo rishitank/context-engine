@@ -25,4 +25,8 @@ export interface RetrievalOptions {
   enableDedupe?: boolean;
   enableRerank?: boolean;
   log?: boolean;
+  /** When true, bypass all caches (internal + in-process + persistent). */
+  bypassCache?: boolean;
+  /** Optional override for the SDK search output length. */
+  maxOutputLength?: number;
 }

@@ -291,7 +291,53 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ### Enable verbose logging
 
-Modify `src/mcp/server.ts` to add debug output:
+Prefer enabling debug flags via environment variables (no code changes needed):
+
+```bash
+# Verbose indexing + discovery logs
+export CE_DEBUG_INDEX=true
+
+# Verbose semantic search parsing/raw output logs
+export CE_DEBUG_SEARCH=true
+
+# Tune indexing batch size (default: 10)
+export CE_INDEX_BATCH_SIZE=25
+
+# Run full-workspace indexing in a worker thread (default: enabled; set false to force in-process)
+export CE_INDEX_USE_WORKER=true
+
+# Also use the worker for large incremental batches (default threshold: 200 paths)
+export CE_INDEX_FILES_WORKER_THRESHOLD=200
+
+Note: worker-based indexing requires the built worker file (`dist/worker/IndexWorker.js`). When running from TypeScript sources (dev/tsx),
+the worker uses the `tsx` loader if available; if not, indexing falls back to in-process mode to avoid startup failures in some GUI clients.
+
+# Persist semantic search results to disk (default: enabled; disable for privacy/testing)
+export CE_PERSIST_SEARCH_CACHE=true
+
+# Persist get_context_for_prompt bundles to disk (default: enabled; disable for privacy/testing)
+export CE_PERSIST_CONTEXT_CACHE=true
+
+# Watcher: when enabled, schedule a full reindex if deletions are detected (prevents stale "ghost file" results)
+export CE_WATCHER_REINDEX_ON_DELETE=true
+# Debounce before triggering reindex after deletions (ms)
+export CE_WATCHER_REINDEX_DEBOUNCE_MS=2000
+# Minimum time between auto-reindexes (ms)
+export CE_WATCHER_REINDEX_COOLDOWN_MS=60000
+# If deletes in a short window reach this count, reindex triggers quickly
+export CE_WATCHER_DELETE_BURST_THRESHOLD=10
+```
+
+Cache files (safe to delete in the workspace when debugging):
+- `.augment-search-cache.json` (semantic_search persistent cache)
+- `.augment-context-cache.json` (get_context_for_prompt persistent cache)
+- `.augment-index-fingerprint.json` (stable index fingerprint for cache keys)
+
+### Benchmark performance
+
+See `docs/BENCHMARKING.md` for `npm run bench` examples.
+
+If you still need ad-hoc debug output, you can temporarily add logs in `src/mcp/server.ts`:
 
 ```typescript
 console.error('DEBUG: Tool called:', name);
@@ -344,4 +390,3 @@ This opens a web interface for interactive debugging.
 | `Invalid TOML` | Config file syntax | Validate TOML syntax in config.toml |
 | `Connection refused` | Server not running | Start server first |
 | `Timeout` | Server too slow | Index workspace, reduce limits |
-

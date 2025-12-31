@@ -16,6 +16,9 @@ build/
 # Augment SDK state files
 .augment/
 .augment-context-state.json
+.augment-index-fingerprint.json
+.augment-search-cache.json
+.augment-context-cache.json
 .augment-plans/
 
 # Personal planning notes
@@ -53,3 +56,4 @@ coverage/
 
 # Optional: Exclude actual config files (keep examples only)
 # codex_config.toml  # Uncomment if you have actual config files
+codex_config*.toml

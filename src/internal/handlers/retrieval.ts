@@ -8,6 +8,16 @@ export async function internalRetrieveCode(
   serviceClient: ContextServiceClient,
   options?: InternalRetrieveOptions
 ): Promise<InternalRetrieveResult> {
+  if (options?.bypassCache) {
+    const start = Date.now();
+    const results = await retrieve(query, serviceClient, options);
+    return {
+      query,
+      elapsedMs: Date.now() - start,
+      results,
+    };
+  }
+
   const cache = getInternalCache();
   const cacheKey = `retrieve:${query}:${JSON.stringify(options ?? {})}`;
   const cached = cache.get<InternalRetrieveResult>(cacheKey);

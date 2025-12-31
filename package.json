@@ -18,7 +18,8 @@
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "verify": "node verify-setup.js",
     "index": "tsx src/index.ts --workspace . --index",
-    "inspector": "npx @modelcontextprotocol/inspector tsx src/index.ts --workspace ."
+    "inspector": "npx @modelcontextprotocol/inspector tsx src/index.ts --workspace .",
+    "bench": "tsx scripts/bench.ts"
   },
   "keywords": [
     "mcp",
@@ -30,7 +31,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@augmentcode/auggie-sdk": "^0.1.10",
+    "@augmentcode/auggie-sdk": "^0.1.11",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "chokidar": "^3.5.3",
     "cors": "^2.8.5",
