@@ -434,6 +434,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "notify",
  "notify-debouncer-mini",
+ "percent-encoding",
  "regex",
  "reqwest",
  "serde",

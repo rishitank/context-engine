@@ -1,11 +1,13 @@
 //! MCP server implementation.
 
+use percent_encoding::percent_decode_str;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::mcp::handler::McpHandler;
@@ -15,6 +17,28 @@ use crate::mcp::resources::ResourceRegistry;
 use crate::mcp::transport::{Message, Transport};
 use crate::service::ContextService;
 use crate::VERSION;
+
+/// Decode a percent-encoded file:// URI path to a PathBuf.
+///
+/// Handles percent-encoded characters like `%20` (space) and properly converts
+/// the decoded string to a filesystem path.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::PathBuf;
+/// let path = decode_file_uri("file:///path/to/my%20file.txt");
+/// assert_eq!(path, Some(PathBuf::from("/path/to/my file.txt")));
+///
+/// let none = decode_file_uri("http://example.com");
+/// assert_eq!(none, None);
+/// ```
+fn decode_file_uri(uri: &str) -> Option<PathBuf> {
+    uri.strip_prefix("file://").map(|path| {
+        let decoded = percent_decode_str(path).decode_utf8_lossy();
+        PathBuf::from(decoded.as_ref())
+    })
+}
 
 /// Log level for the MCP server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -99,6 +123,8 @@ pub struct McpServer {
     cancelled_requests: Arc<RwLock<HashSet<RequestId>>>,
     /// Current log level.
     log_level: Arc<RwLock<LogLevel>>,
+    /// Current session ID (generated during initialize).
+    session_id: Arc<RwLock<String>>,
 }
 
 impl McpServer {
@@ -125,6 +151,7 @@ impl McpServer {
             active_requests: Arc::new(RwLock::new(HashSet::new())),
             cancelled_requests: Arc::new(RwLock::new(HashSet::new())),
             log_level: Arc::new(RwLock::new(LogLevel::default())),
+            session_id: Arc::new(RwLock::new(String::new())),
         }
     }
 
@@ -158,6 +185,7 @@ impl McpServer {
             active_requests: Arc::new(RwLock::new(HashSet::new())),
             cancelled_requests: Arc::new(RwLock::new(HashSet::new())),
             log_level: Arc::new(RwLock::new(LogLevel::default())),
+            session_id: Arc::new(RwLock::new(String::new())),
         }
     }
 
@@ -177,6 +205,21 @@ impl McpServer {
     /// ```
     pub async fn log_level(&self) -> LogLevel {
         *self.log_level.read().await
+    }
+
+    /// Retrieve the current session ID.
+    ///
+    /// Returns an empty string if `initialize` has not been called yet.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use futures::executor::block_on;
+    /// # let server = todo!();
+    /// let session_id = block_on(server.session_id());
+    /// ```
+    pub async fn session_id(&self) -> String {
+        self.session_id.read().await.clone()
     }
 
     /// Update the server's current logging level.
@@ -439,6 +482,11 @@ impl McpServer {
     /// // assert!(resp.get("protocol_version").is_some());
     /// ```
     async fn handle_initialize(&self, params: Option<Value>) -> Result<Value> {
+        // Generate a new session ID for this connection
+        let new_session_id = Uuid::new_v4().to_string();
+        *self.session_id.write().await = new_session_id.clone();
+        info!("New session initialized: {}", new_session_id);
+
         // Extract roots from client if provided
         if let Some(ref params) = params {
             #[derive(serde::Deserialize)]
@@ -456,9 +504,10 @@ impl McpServer {
             if let Ok(init) = serde_json::from_value::<InitParams>(params.clone()) {
                 let mut roots = self.roots.write().await;
                 for root in init.roots {
-                    if let Some(path) = root.uri.strip_prefix("file://") {
-                        roots.push(PathBuf::from(path));
-                        info!("Added client root: {} ({:?})", path, root.name);
+                    // Use proper URI decoding to handle percent-encoded paths
+                    if let Some(path) = decode_file_uri(&root.uri) {
+                        info!("Added client root: {:?} ({:?})", path, root.name);
+                        roots.push(path);
                     }
                 }
             }
@@ -692,14 +741,13 @@ impl McpServer {
         Ok(serde_json::to_value(result)?)
     }
 
-    /// Subscribe the default session to a resource identified by URI.
+    /// Subscribe the current session to a resource identified by URI.
     ///
-    /// Returns an error if resources are not enabled for this server or if the required `params` are
-    /// missing or cannot be deserialized.
+    /// Returns an error if resources are not enabled for this server, if `initialize` has not been
+    /// called yet, or if the required `params` are missing or cannot be deserialized.
     ///
     /// The request causes the server to call the configured ResourceRegistry's `subscribe` method for
-    /// the provided URI using a placeholder session id ("default") and, on success, returns an empty
-    /// JSON object.
+    /// the provided URI using the current session ID and, on success, returns an empty JSON object.
     ///
     /// # Examples
     ///
@@ -717,6 +765,13 @@ impl McpServer {
             .as_ref()
             .ok_or_else(|| Error::McpProtocol("Resources not enabled".to_string()))?;
 
+        let session_id = self.session_id.read().await;
+        if session_id.is_empty() {
+            return Err(Error::McpProtocol(
+                "Session not initialized. Call initialize first.".to_string(),
+            ));
+        }
+
         #[derive(serde::Deserialize)]
         struct SubscribeParams {
             uri: String,
@@ -728,17 +783,26 @@ impl McpServer {
                 serde_json::from_value(v).map_err(|e| Error::InvalidToolArguments(e.to_string()))
             })?;
 
-        // Use a placeholder session ID for now
-        resources.subscribe(&sub_params.uri, "default").await?;
+        resources.subscribe(&sub_params.uri, &session_id).await?;
         Ok(serde_json::json!({}))
     }
 
-    /// Handle unsubscribe from resource.
+    /// Unsubscribe the current session from a resource identified by URI.
+    ///
+    /// Returns an error if resources are not enabled for this server, if `initialize` has not been
+    /// called yet, or if the required `params` are missing or cannot be deserialized.
     async fn handle_unsubscribe_resource(&self, params: Option<Value>) -> Result<Value> {
         let resources = self
             .resources
             .as_ref()
             .ok_or_else(|| Error::McpProtocol("Resources not enabled".to_string()))?;
+
+        let session_id = self.session_id.read().await;
+        if session_id.is_empty() {
+            return Err(Error::McpProtocol(
+                "Session not initialized. Call initialize first.".to_string(),
+            ));
+        }
 
         #[derive(serde::Deserialize)]
         struct UnsubscribeParams {
@@ -751,7 +815,9 @@ impl McpServer {
                 serde_json::from_value(v).map_err(|e| Error::InvalidToolArguments(e.to_string()))
             })?;
 
-        resources.unsubscribe(&unsub_params.uri, "default").await?;
+        resources
+            .unsubscribe(&unsub_params.uri, &session_id)
+            .await?;
         Ok(serde_json::json!({}))
     }
 

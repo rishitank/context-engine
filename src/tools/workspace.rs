@@ -218,19 +218,24 @@ fn collect_stats_recursive<'a>(
                 stats.directories += 1;
                 collect_stats_recursive(&entry_path, stats, include_hidden).await;
             } else if file_type.is_file() {
-                if let Some(ext) = entry_path.extension() {
+                // Try extension first, then fall back to filename-based detection
+                let lang = if let Some(ext) = entry_path.extension() {
                     let ext_str = ext.to_string_lossy().to_lowercase();
-                    let lang = extension_to_language(&ext_str);
+                    extension_to_language(&ext_str)
+                } else {
+                    // Handle extensionless files like Makefile, Dockerfile, etc.
+                    filename_to_language(&name_str).unwrap_or("other")
+                };
 
-                    if lang != "binary" {
-                        stats.total_files += 1;
-                        let lines = count_lines(&entry_path).await.unwrap_or(0);
-                        stats.total_lines += lines;
+                // Include all recognized code/config files
+                if lang != "other" {
+                    stats.total_files += 1;
+                    let lines = count_lines(&entry_path).await.unwrap_or(0);
+                    stats.total_lines += lines;
 
-                        let lang_stats = stats.languages.entry(lang.to_string()).or_default();
-                        lang_stats.files += 1;
-                        lang_stats.lines += lines;
-                    }
+                    let lang_stats = stats.languages.entry(lang.to_string()).or_default();
+                    lang_stats.files += 1;
+                    lang_stats.lines += lines;
                 }
             }
         }
@@ -268,7 +273,7 @@ async fn count_lines(path: &Path) -> Result<usize> {
 /// Maps a file extension to a human-readable language label.
 ///
 /// Returns the language label associated with `ext` (for example, `"rs"` -> `"rust"`).
-/// Unknown or binary extensions return `"binary"`.
+/// Unknown extensions return `"other"`.
 ///
 /// # Examples
 ///
@@ -276,7 +281,7 @@ async fn count_lines(path: &Path) -> Result<usize> {
 /// assert_eq!(extension_to_language("rs"), "rust");
 /// assert_eq!(extension_to_language("py"), "python");
 /// assert_eq!(extension_to_language("tsx"), "react");
-/// assert_eq!(extension_to_language("unknown_ext"), "binary");
+/// assert_eq!(extension_to_language("unknown_ext"), "other");
 /// ```
 fn extension_to_language(ext: &str) -> &'static str {
     match ext {
@@ -295,16 +300,79 @@ fn extension_to_language(ext: &str) -> &'static str {
         "kt" => "kotlin",
         "scala" => "scala",
         "php" => "php",
-        "sh" | "bash" => "shell",
+        "sh" | "bash" | "zsh" | "fish" => "shell",
         "sql" => "sql",
-        "html" => "html",
-        "css" | "scss" | "sass" => "css",
-        "json" => "json",
+        "html" | "htm" => "html",
+        "css" | "scss" | "sass" | "less" => "css",
+        "json" | "jsonc" => "json",
         "yaml" | "yml" => "yaml",
         "toml" => "toml",
         "md" | "markdown" => "markdown",
-        "xml" => "xml",
-        _ => "binary",
+        "xml" | "xsd" | "xsl" => "xml",
+        "proto" => "protobuf",
+        "graphql" | "gql" => "graphql",
+        "tf" | "tfvars" => "terraform",
+        "vue" | "svelte" => "web-framework",
+        "lua" => "lua",
+        "r" => "r",
+        "ex" | "exs" => "elixir",
+        "erl" | "hrl" => "erlang",
+        "hs" | "lhs" => "haskell",
+        "ml" | "mli" => "ocaml",
+        "clj" | "cljs" | "cljc" => "clojure",
+        "dart" => "dart",
+        "pl" | "pm" => "perl",
+        "groovy" | "gradle" => "groovy",
+        "nim" => "nim",
+        "zig" => "zig",
+        _ => "other",
+    }
+}
+
+/// Maps an extensionless filename to a language category.
+///
+/// Recognizes common configuration and build files without extensions.
+/// Returns `None` if the filename is not recognized.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(filename_to_language("Makefile"), Some("make"));
+/// assert_eq!(filename_to_language("Dockerfile"), Some("dockerfile"));
+/// assert_eq!(filename_to_language("random"), None);
+/// ```
+fn filename_to_language(filename: &str) -> Option<&'static str> {
+    match filename {
+        // Build systems
+        "Makefile" | "makefile" | "GNUmakefile" => Some("make"),
+        "CMakeLists.txt" => Some("cmake"),
+        "Rakefile" | "rakefile" => Some("ruby"),
+        "Justfile" | "justfile" => Some("just"),
+        "BUILD" | "BUILD.bazel" | "WORKSPACE" | "WORKSPACE.bazel" => Some("bazel"),
+
+        // Container/orchestration
+        "Dockerfile" | "dockerfile" | "Containerfile" => Some("dockerfile"),
+        "Vagrantfile" => Some("ruby"),
+        "Procfile" => Some("procfile"),
+
+        // CI/CD
+        "Jenkinsfile" => Some("groovy"),
+
+        // Config files (dotfiles without extension)
+        ".gitignore" | ".dockerignore" | ".npmignore" | ".prettierignore" => Some("gitignore"),
+        ".editorconfig" => Some("ini"),
+        ".env" | ".env.local" | ".env.development" | ".env.production" | ".env.test" => {
+            Some("dotenv")
+        }
+
+        // Shell config
+        ".bashrc" | ".bash_profile" | ".zshrc" | ".zprofile" | ".profile" => Some("shell"),
+
+        // Other
+        "LICENSE" | "COPYING" | "AUTHORS" | "CONTRIBUTORS" => Some("text"),
+        "CHANGELOG" | "HISTORY" | "NEWS" => Some("text"),
+        "README" | "TODO" | "NOTES" => Some("text"),
+        _ => None,
     }
 }
 
@@ -1740,7 +1808,17 @@ mod tests {
         assert_eq!(extension_to_language("py"), "python");
         assert_eq!(extension_to_language("ts"), "typescript");
         assert_eq!(extension_to_language("go"), "go");
-        assert_eq!(extension_to_language("unknown"), "binary");
+        assert_eq!(extension_to_language("unknown"), "other");
+    }
+
+    #[test]
+    fn test_filename_to_language() {
+        assert_eq!(filename_to_language("Makefile"), Some("make"));
+        assert_eq!(filename_to_language("Dockerfile"), Some("dockerfile"));
+        assert_eq!(filename_to_language("Jenkinsfile"), Some("groovy"));
+        assert_eq!(filename_to_language(".gitignore"), Some("gitignore"));
+        assert_eq!(filename_to_language(".env"), Some("dotenv"));
+        assert_eq!(filename_to_language("random_file"), None);
     }
 
     #[test]

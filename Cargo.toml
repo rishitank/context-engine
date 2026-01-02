@@ -70,6 +70,7 @@ notify-debouncer-mini = "0.5"
 
 # Async compression
 async-compression = { version = "0.4", features = ["tokio", "gzip", "brotli", "deflate"] }
+percent-encoding = "2.3.2"
 
 [dev-dependencies]
 tempfile = "3"

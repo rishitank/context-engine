@@ -233,58 +233,39 @@ Bridge with LSP servers for richer code intelligence.
 
 ---
 
+## Completed Enhancements (from Code Review)
+
+The following enhancements were identified during code review and have been implemented:
+
+### ✅ Percent-Encoded URI Decoding
+**Files:** `src/mcp/server.rs`, `src/mcp/resources.rs`
+
+File URIs with percent-encoded characters (like spaces as `%20`) are now properly decoded using the `percent-encoding` crate.
+
+### ✅ Proper Session Management
+**File:** `src/mcp/server.rs`
+
+The server now generates unique session IDs during `initialize` using UUID v4. The session ID is used for resource subscriptions and unsubscriptions instead of a hardcoded default.
+
+### ✅ Extensionless File Handling
+**File:** `src/tools/workspace.rs`
+
+Extensionless files like Makefile, Dockerfile, Jenkinsfile, and common dotfiles are now properly categorized using the new `filename_to_language()` function.
+
+### ✅ Language Category Naming
+**File:** `src/tools/workspace.rs`
+
+The `extension_to_language()` function now returns `"other"` for unknown extensions instead of the misleading `"binary"`.
+
+---
+
 ## Future Enhancements (from Code Review)
 
-The following enhancements were identified during code review and are documented for future implementation:
-
-### High Priority
-
-#### 1. Percent-Encoded URI Decoding
-**File:** `src/mcp/server.rs`
-
-Currently, file URIs with percent-encoded characters (like spaces as `%20`) may not resolve correctly. Adding the `percent-encoding` crate would enable proper URI decoding.
-
-```rust
-use percent_encoding::percent_decode_str;
-
-// When parsing file:// URIs
-if let Some(path) = root.uri.strip_prefix("file://") {
-    let decoded = percent_decode_str(path).decode_utf8_lossy();
-    roots.push(PathBuf::from(decoded.as_ref()));
-}
-```
-
-#### 2. Proper Session Management
-**File:** `src/mcp/server.rs`
-
-The current implementation uses a hardcoded `"default"` session ID for subscriptions. Proper session management would require:
-
-1. Generating unique session IDs during `initialize`
-2. Passing session context through the request handling chain
-3. Cleaning up subscriptions when sessions end
-4. Tracking per-session state
-
-```rust
-pub struct SessionManager {
-    sessions: HashMap<String, SessionState>,
-}
-
-impl SessionManager {
-    pub fn create_session(&mut self) -> String {
-        let id = uuid::Uuid::new_v4().to_string();
-        self.sessions.insert(id.clone(), SessionState::default());
-        id
-    }
-
-    pub fn cleanup_session(&mut self, id: &str) {
-        self.sessions.remove(id);
-    }
-}
-```
+The following enhancements are documented for future implementation:
 
 ### Medium Priority
 
-#### 3. Progress Reporting Improvements
+#### 1. Progress Reporting Improvements
 **File:** `src/mcp/progress.rs`
 
 - Add warning log when `complete()` is called without a total being set
@@ -302,7 +283,7 @@ if self.sender.send(notification).is_err() {
 }
 ```
 
-#### 4. TypeScript Function Detection Accuracy
+#### 2. TypeScript Function Detection Accuracy
 **File:** `src/tools/workspace.rs`
 
 The current detection using `line.contains("function ")` can produce false positives on comments like `// This function does...`. A more precise approach:
@@ -318,50 +299,14 @@ if trimmed.starts_with("function ")
 }
 ```
 
-#### 5. Extensionless File Handling
-**File:** `src/tools/workspace.rs`
-
-Currently, extensionless files are excluded from workspace statistics. Add special handling for known extensionless files:
-
-```rust
-fn is_known_extensionless_file(name: &str) -> Option<&'static str> {
-    match name {
-        "Makefile" | "GNUmakefile" => Some("make"),
-        "Dockerfile" => Some("dockerfile"),
-        "Jenkinsfile" => Some("groovy"),
-        "Procfile" => Some("procfile"),
-        "Vagrantfile" => Some("ruby"),
-        "Gemfile" => Some("ruby"),
-        "Rakefile" => Some("ruby"),
-        ".gitignore" | ".gitattributes" => Some("git"),
-        ".env" | ".env.example" => Some("env"),
-        _ => None,
-    }
-}
-```
-
 ### Low Priority
 
-#### 6. Language Category Naming
-**File:** `src/tools/workspace.rs`
-
-The `extension_to_language()` function returns `"binary"` for unknown extensions. Consider renaming to `"other"` or `"unknown"` for accuracy, since extensionless files aren't necessarily binary.
-
-```rust
-fn extension_to_language(ext: &str) -> &'static str {
-    match ext {
-        // ... existing mappings ...
-        _ => "other",  // Changed from "binary"
-    }
-}
-```
-
-#### 7. Async I/O in Resource Discovery
+#### 3. Async I/O in Resource Discovery
 **File:** `src/mcp/resources.rs`
 
 Some operations use blocking I/O patterns in async context. Consider using `tokio::task::spawn_blocking` for CPU-intensive operations or ensuring all file I/O uses async variants consistently.
 
-#### 8. Silent Fallback on Malformed Params
+#### 4. Silent Fallback on Malformed Params
 **File:** `src/mcp/server.rs`
 
 Some handlers silently use defaults when params are malformed. Consider adding debug logging for better troubleshooting:
@@ -385,11 +330,7 @@ The following are documented limitations of the current implementation:
 
 | Limitation | Workaround | Future Fix |
 |------------|------------|------------|
-| Percent-encoded URIs not decoded | Use paths without special characters | Add `percent-encoding` crate |
-| Single session support | Works for single-client scenarios | Implement session manager |
 | TypeScript function false positives | Use `extract_symbols` for accurate results | Improve line-start detection |
-| Extensionless files excluded | Manually include in analysis | Add known extensionless mapping |
-| Hardcoded "binary" label | Use extension mapping | Rename to "other"/"unknown" |
 
 ---
 

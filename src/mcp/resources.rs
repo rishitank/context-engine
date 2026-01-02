@@ -2,6 +2,7 @@
 //!
 //! Expose indexed files as MCP resources that AI clients can browse and read.
 
+use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -11,6 +12,17 @@ use tokio::sync::RwLock;
 
 use crate::error::{Error, Result};
 use crate::service::ContextService;
+
+/// Decode a percent-encoded file:// URI path to a PathBuf.
+///
+/// Handles percent-encoded characters like `%20` (space) and properly converts
+/// the decoded string to a filesystem path.
+fn decode_file_uri(uri: &str) -> Option<PathBuf> {
+    uri.strip_prefix("file://").map(|path| {
+        let decoded = percent_decode_str(path).decode_utf8_lossy();
+        PathBuf::from(decoded.as_ref())
+    })
+}
 
 /// A resource exposed by the server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,15 +180,9 @@ impl ResourceRegistry {
     /// # Ok(()) }
     /// ```
     pub async fn read(&self, uri: &str) -> Result<ReadResourceResult> {
-        // Parse file:// URI
-        let path = if let Some(path) = uri.strip_prefix("file://") {
-            PathBuf::from(path)
-        } else {
-            return Err(Error::InvalidToolArguments(format!(
-                "Invalid URI scheme: {}",
-                uri
-            )));
-        };
+        // Parse and decode file:// URI (handles percent-encoded characters like %20)
+        let path = decode_file_uri(uri)
+            .ok_or_else(|| Error::InvalidToolArguments(format!("Invalid URI scheme: {}", uri)))?;
 
         // Security: canonicalize both workspace and path, then verify path is within workspace
         let workspace = self.context_service.workspace();
