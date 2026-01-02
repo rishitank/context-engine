@@ -9,8 +9,10 @@
 //! - `review` - Code review tools (14 tools)
 //! - `navigation` - Code navigation tools (3 tools)
 //! - `workspace` - Workspace analysis and git tools (7 tools)
+//! - `language` - Multi-language symbol detection and definition patterns
 
 pub mod index;
+pub mod language;
 pub mod memory;
 pub mod navigation;
 pub mod planning;

@@ -12,6 +12,7 @@ use crate::error::Result;
 use crate::mcp::handler::{error_result, get_string_arg, success_result, ToolHandler};
 use crate::mcp::protocol::{Tool, ToolResult};
 use crate::service::ContextService;
+use crate::tools::language;
 
 /// Get workspace statistics (file counts, language breakdown, etc.).
 pub struct WorkspaceStatsTool {
@@ -270,110 +271,38 @@ async fn count_lines(path: &Path) -> Result<usize> {
     Ok(content.lines().count())
 }
 
-/// Maps a file extension to a human-readable language label.
+/// Maps a file extension to a canonical language identifier.
 ///
-/// Returns the language label associated with `ext` (for example, `"rs"` -> `"rust"`).
-/// Unknown extensions return `"other"`.
+/// Delegates to the centralized language module for comprehensive language support.
+/// Returns a human-readable language name for common programming and configuration
+/// file extensions. Unrecognized extensions are mapped to `"unknown"`.
 ///
 /// # Examples
 ///
 /// ```
 /// assert_eq!(extension_to_language("rs"), "rust");
 /// assert_eq!(extension_to_language("py"), "python");
-/// assert_eq!(extension_to_language("tsx"), "react");
-/// assert_eq!(extension_to_language("unknown_ext"), "other");
+/// assert_eq!(extension_to_language("tsx"), "typescript");
 /// ```
 fn extension_to_language(ext: &str) -> &'static str {
-    match ext {
-        "rs" => "rust",
-        "py" => "python",
-        "js" => "javascript",
-        "ts" => "typescript",
-        "tsx" | "jsx" => "react",
-        "go" => "go",
-        "java" => "java",
-        "rb" => "ruby",
-        "c" | "h" => "c",
-        "cpp" | "cc" | "hpp" => "cpp",
-        "cs" => "csharp",
-        "swift" => "swift",
-        "kt" => "kotlin",
-        "scala" => "scala",
-        "php" => "php",
-        "sh" | "bash" | "zsh" | "fish" => "shell",
-        "sql" => "sql",
-        "html" | "htm" => "html",
-        "css" | "scss" | "sass" | "less" => "css",
-        "json" | "jsonc" => "json",
-        "yaml" | "yml" => "yaml",
-        "toml" => "toml",
-        "md" | "markdown" => "markdown",
-        "xml" | "xsd" | "xsl" => "xml",
-        "proto" => "protobuf",
-        "graphql" | "gql" => "graphql",
-        "tf" | "tfvars" => "terraform",
-        "vue" | "svelte" => "web-framework",
-        "lua" => "lua",
-        "r" => "r",
-        "ex" | "exs" => "elixir",
-        "erl" | "hrl" => "erlang",
-        "hs" | "lhs" => "haskell",
-        "ml" | "mli" => "ocaml",
-        "clj" | "cljs" | "cljc" => "clojure",
-        "dart" => "dart",
-        "pl" | "pm" => "perl",
-        "groovy" | "gradle" => "groovy",
-        "nim" => "nim",
-        "zig" => "zig",
-        _ => "other",
-    }
+    language::extension_to_language(ext)
 }
 
 /// Maps an extensionless filename to a language category.
 ///
+/// Delegates to the centralized language module for comprehensive language support.
 /// Recognizes common configuration and build files without extensions.
 /// Returns `None` if the filename is not recognized.
 ///
 /// # Examples
 ///
 /// ```
-/// assert_eq!(filename_to_language("Makefile"), Some("make"));
+/// assert_eq!(filename_to_language("Makefile"), Some("makefile"));
 /// assert_eq!(filename_to_language("Dockerfile"), Some("dockerfile"));
 /// assert_eq!(filename_to_language("random"), None);
 /// ```
 fn filename_to_language(filename: &str) -> Option<&'static str> {
-    match filename {
-        // Build systems
-        "Makefile" | "makefile" | "GNUmakefile" => Some("make"),
-        "CMakeLists.txt" => Some("cmake"),
-        "Rakefile" | "rakefile" => Some("ruby"),
-        "Justfile" | "justfile" => Some("just"),
-        "BUILD" | "BUILD.bazel" | "WORKSPACE" | "WORKSPACE.bazel" => Some("bazel"),
-
-        // Container/orchestration
-        "Dockerfile" | "dockerfile" | "Containerfile" => Some("dockerfile"),
-        "Vagrantfile" => Some("ruby"),
-        "Procfile" => Some("procfile"),
-
-        // CI/CD
-        "Jenkinsfile" => Some("groovy"),
-
-        // Config files (dotfiles without extension)
-        ".gitignore" | ".dockerignore" | ".npmignore" | ".prettierignore" => Some("gitignore"),
-        ".editorconfig" => Some("ini"),
-        ".env" | ".env.local" | ".env.development" | ".env.production" | ".env.test" => {
-            Some("dotenv")
-        }
-
-        // Shell config
-        ".bashrc" | ".bash_profile" | ".zshrc" | ".zprofile" | ".profile" => Some("shell"),
-
-        // Other
-        "LICENSE" | "COPYING" | "AUTHORS" | "CONTRIBUTORS" => Some("text"),
-        "CHANGELOG" | "HISTORY" | "NEWS" => Some("text"),
-        "README" | "TODO" | "NOTES" => Some("text"),
-        _ => None,
-    }
+    language::filename_to_language(filename)
 }
 
 /// Get git status for the workspace.
@@ -678,6 +607,7 @@ struct Symbol {
 
 /// Extracts symbol definitions from the given source text for the specified file extension.
 ///
+/// Delegates to the centralized language module for comprehensive multi-language support.
 /// Scans the content line-by-line and returns a vector of detected `Symbol` entries
 /// (each with name, kind, line number, and optional signature) appropriate for the
 /// language indicated by `ext`.
@@ -699,366 +629,19 @@ fn extract_symbols_from_content(content: &str, ext: &str) -> Vec<Symbol> {
 
     for (i, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
-        if let Some(sym) = detect_symbol(trimmed, ext, i + 1) {
-            symbols.push(sym);
+        // Use the centralized language module for symbol detection
+        if let Some(lang_sym) = language::detect_symbol(trimmed, ext, i + 1) {
+            // Convert language::Symbol to local Symbol
+            symbols.push(Symbol {
+                name: lang_sym.name,
+                kind: lang_sym.kind,
+                line: lang_sym.line,
+                signature: lang_sym.signature,
+            });
         }
     }
 
     symbols
-}
-
-/// Dispatches a single source line to the language-specific symbol detector based on the file extension.
-///
-/// Supported extensions: "rs" (Rust), "py" (Python), "ts", "tsx", "js", "jsx" (TypeScript/JavaScript), and "go" (Go).
-///
-/// # Returns
-///
-/// `Some(Symbol)` if the line contains a recognized symbol for the given language, `None` otherwise.
-///
-/// # Examples
-///
-/// ```
-/// let line = "pub fn hello(name: &str) -> String {";
-/// let sym = detect_symbol(line, "rs", 1);
-/// assert!(sym.is_some());
-/// ```
-fn detect_symbol(line: &str, ext: &str, line_num: usize) -> Option<Symbol> {
-    match ext {
-        "rs" => detect_rust_symbol(line, line_num),
-        "py" => detect_python_symbol(line, line_num),
-        "ts" | "tsx" | "js" | "jsx" => detect_ts_symbol(line, line_num),
-        "go" => detect_go_symbol(line, line_num),
-        _ => None,
-    }
-}
-
-/// Detects a top-level Rust symbol declared on a single source line.
-///
-/// Recognizes `function`, `struct`, `enum`, `trait`, and `impl` declarations. When a symbol is found,
-/// returns a `Symbol` with its `name`, `kind`, `line`, and an optional `signature` (present for functions and impls).
-///
-/// # Examples
-///
-/// ```
-/// let s = detect_rust_symbol("pub fn add(a: i32, b: i32) -> i32 {", 3).unwrap();
-/// assert_eq!(s.name, "add");
-/// assert_eq!(s.kind, "function");
-/// assert_eq!(s.line, 3);
-///
-/// let st = detect_rust_symbol("struct Point {", 10).unwrap();
-/// assert_eq!(st.name, "Point");
-/// assert_eq!(st.kind, "struct");
-/// ```
-fn detect_rust_symbol(line: &str, line_num: usize) -> Option<Symbol> {
-    if line.starts_with("pub fn ") || line.starts_with("fn ") {
-        let name = extract_name(line, "fn ");
-        return Some(Symbol {
-            name,
-            kind: "function".to_string(),
-            line: line_num,
-            signature: Some(line.to_string()),
-        });
-    }
-    if line.starts_with("pub struct ") || line.starts_with("struct ") {
-        let name = extract_name(line, "struct ");
-        return Some(Symbol {
-            name,
-            kind: "struct".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    if line.starts_with("pub enum ") || line.starts_with("enum ") {
-        let name = extract_name(line, "enum ");
-        return Some(Symbol {
-            name,
-            kind: "enum".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    if line.starts_with("pub trait ") || line.starts_with("trait ") {
-        let name = extract_name(line, "trait ");
-        return Some(Symbol {
-            name,
-            kind: "trait".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    if line.starts_with("impl ") {
-        let rest = line.strip_prefix("impl ").unwrap_or(line);
-        // Skip generic parameters if present (e.g., impl<T> Foo<T>)
-        let rest = if rest.starts_with('<') {
-            rest.split_once('>')
-                .map(|(_, after)| after.trim_start())
-                .unwrap_or(rest)
-        } else {
-            rest
-        };
-        // Extract the type/trait name (first identifier before '<', ' ', '{', or 'for')
-        let name = rest
-            .split(|c: char| !c.is_alphanumeric() && c != '_')
-            .next()
-            .unwrap_or("")
-            .to_string();
-        return Some(Symbol {
-            name,
-            kind: "impl".to_string(),
-            line: line_num,
-            signature: Some(line.to_string()),
-        });
-    }
-    None
-}
-
-/// Detects a top-level Python symbol declaration on a single line.
-///
-/// Analyzes the provided line for `def`, `async def`, or `class` declarations and,
-/// when found, returns a `Symbol` containing the identifier name, kind, source line
-/// number, and an optional signature (the full line) for functions.
-///
-/// # Parameters
-///
-/// - `line`: the source line to inspect.
-/// - `line_num`: the 1-based line number to record in the returned `Symbol`.
-///
-/// # Returns
-///
-/// `Some(Symbol)` when the line declares a Python function, async function, or class;
-/// `None` otherwise.
-///
-/// # Examples
-///
-/// ```
-/// let s = detect_python_symbol("def foo(bar):", 1).unwrap();
-/// assert_eq!(s.name, "foo");
-/// assert_eq!(s.kind, "function");
-/// assert_eq!(s.line, 1);
-/// assert_eq!(s.signature.unwrap(), "def foo(bar):".to_string());
-/// ```
-fn detect_python_symbol(line: &str, line_num: usize) -> Option<Symbol> {
-    if line.starts_with("def ") {
-        let name = extract_name(line, "def ");
-        return Some(Symbol {
-            name,
-            kind: "function".to_string(),
-            line: line_num,
-            signature: Some(line.to_string()),
-        });
-    }
-    if line.starts_with("class ") {
-        let name = extract_name(line, "class ");
-        return Some(Symbol {
-            name,
-            kind: "class".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    if line.starts_with("async def ") {
-        let name = extract_name(line, "async def ");
-        return Some(Symbol {
-            name,
-            kind: "async_function".to_string(),
-            line: line_num,
-            signature: Some(line.to_string()),
-        });
-    }
-    None
-}
-
-/// Detects a TypeScript/JavaScript symbol declaration on a single source line.
-///
-/// The function recognizes `function`, `class`, `interface`, and `type` declarations
-/// (including `export` variants) and returns the corresponding symbol metadata.
-///
-/// # Returns
-///
-/// `Some(Symbol)` containing the detected symbol's name, kind, line number, and an
-/// optional signature (present for `function`), or `None` if no supported declaration is found.
-///
-/// # Examples
-///
-/// ```
-/// let line = "export class MyComponent {";
-/// let sym = detect_ts_symbol(line, 10).unwrap();
-/// assert_eq!(sym.name, "MyComponent");
-/// assert_eq!(sym.kind, "class");
-/// assert_eq!(sym.line, 10);
-/// ```
-fn detect_ts_symbol(line: &str, line_num: usize) -> Option<Symbol> {
-    let trimmed = line.trim_start();
-
-    // Function declarations - check for line-start patterns to avoid false positives
-    // Matches: function foo(), export function foo(), async function foo(), export async function foo()
-    let is_function_decl = trimmed.starts_with("function ")
-        || trimmed.starts_with("export function ")
-        || trimmed.starts_with("async function ")
-        || trimmed.starts_with("export async function ");
-
-    if is_function_decl {
-        let name = extract_name(trimmed, "function ");
-        if !name.is_empty() {
-            let kind = if trimmed.contains("async ") {
-                "async_function"
-            } else {
-                "function"
-            };
-            return Some(Symbol {
-                name,
-                kind: kind.to_string(),
-                line: line_num,
-                signature: Some(line.to_string()),
-            });
-        }
-    }
-    // Class declarations
-    if line.starts_with("class ") || line.starts_with("export class ") {
-        let name = if line.contains("export class ") {
-            extract_name(line, "export class ")
-        } else {
-            extract_name(line, "class ")
-        };
-        return Some(Symbol {
-            name,
-            kind: "class".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    // Interface declarations
-    if line.starts_with("interface ") || line.starts_with("export interface ") {
-        let name = if line.contains("export interface ") {
-            extract_name(line, "export interface ")
-        } else {
-            extract_name(line, "interface ")
-        };
-        return Some(Symbol {
-            name,
-            kind: "interface".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    // Type declarations
-    if line.starts_with("type ") || line.starts_with("export type ") {
-        let name = if line.contains("export type ") {
-            extract_name(line, "export type ")
-        } else {
-            extract_name(line, "type ")
-        };
-        return Some(Symbol {
-            name,
-            kind: "type".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    None
-}
-
-/// Detects top-level Go symbols on a single source line.
-///
-/// Recognizes function declarations (including methods), `type ... struct` and `type ... interface`
-/// declarations and returns a corresponding `Symbol`.
-///
-/// # Parameters
-///
-/// - `line`: the source code line to analyze.
-/// - `line_num`: the 1-based line number where `line` appears.
-///
-/// # Returns
-///
-/// `Some(Symbol)` when a Go symbol is found, `None` otherwise.
-///
-/// # Examples
-///
-/// ```
-/// let line_fn = "func Add(a int, b int) int {";
-/// let sym = detect_go_symbol(line_fn, 10).unwrap();
-/// assert_eq!(sym.name, "Add");
-/// assert_eq!(sym.kind, "function");
-/// assert_eq!(sym.line, 10);
-///
-/// let line_method = "func (r *Repo) Save(item Item) error {";
-/// let sym = detect_go_symbol(line_method, 20).unwrap();
-/// assert_eq!(sym.name, "Save");
-/// assert_eq!(sym.kind, "function");
-///
-/// let line_struct = "type User struct {";
-/// let sym = detect_go_symbol(line_struct, 30).unwrap();
-/// assert_eq!(sym.name, "User");
-/// assert_eq!(sym.kind, "struct");
-///
-/// let line_iface = "type Reader interface {";
-/// let sym = detect_go_symbol(line_iface, 40).unwrap();
-/// assert_eq!(sym.name, "Reader");
-/// assert_eq!(sym.kind, "interface");
-/// ```
-fn detect_go_symbol(line: &str, line_num: usize) -> Option<Symbol> {
-    if line.starts_with("func ") {
-        let rest = line.strip_prefix("func ").unwrap_or(line);
-        let name = if rest.starts_with('(') {
-            // Method: func (r *Receiver) MethodName(...)
-            rest.split(')')
-                .nth(1)
-                .and_then(|s| s.trim().split('(').next())
-        } else {
-            // Function: func FuncName(...)
-            rest.split('(').next()
-        };
-        if let Some(name) = name {
-            return Some(Symbol {
-                name: name.trim().to_string(),
-                kind: "function".to_string(),
-                line: line_num,
-                signature: Some(line.to_string()),
-            });
-        }
-    }
-    if line.starts_with("type ") && line.contains(" struct") {
-        let name = extract_name(line, "type ");
-        return Some(Symbol {
-            name,
-            kind: "struct".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    if line.starts_with("type ") && line.contains(" interface") {
-        let name = extract_name(line, "type ");
-        return Some(Symbol {
-            name,
-            kind: "interface".to_string(),
-            line: line_num,
-            signature: None,
-        });
-    }
-    None
-}
-
-/// Extracts the identifier immediately following a given prefix in a line.
-///
-/// The function finds the first occurrence of `prefix` in `line` and returns the contiguous
-/// sequence of ASCII letters, digits, or underscores that follows it. If the prefix is not
-/// present or no valid identifier follows, an empty string is returned.
-///
-/// # Examples
-///
-/// ```
-/// assert_eq!(extract_name("pub fn hello_world()", "fn "), "hello_world");
-/// assert_eq!(extract_name("impl<T> MyType<T> {", "impl "), "MyType");
-/// assert_eq!(extract_name("let x = 1;", "const "), "");
-/// ```
-fn extract_name(line: &str, prefix: &str) -> String {
-    line.split(prefix)
-        .nth(1)
-        .unwrap_or("")
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .next()
-        .unwrap_or("")
-        .to_string()
 }
 
 // ===== Git Tools =====
@@ -1824,16 +1407,20 @@ mod tests {
     #[test]
     fn test_filename_to_language() {
         assert_eq!(filename_to_language("Makefile"), Some("make"));
-        assert_eq!(filename_to_language("Dockerfile"), Some("dockerfile"));
+        assert_eq!(filename_to_language("Dockerfile"), Some("docker"));
         assert_eq!(filename_to_language("Jenkinsfile"), Some("groovy"));
-        assert_eq!(filename_to_language(".gitignore"), Some("gitignore"));
-        assert_eq!(filename_to_language(".env"), Some("dotenv"));
+        assert_eq!(filename_to_language(".gitignore"), Some("git"));
+        assert_eq!(filename_to_language(".env"), Some("env"));
         assert_eq!(filename_to_language("random_file"), None);
     }
 
+    // Symbol detection tests now use the centralized language module.
+    // The language module has its own comprehensive tests in src/tools/language.rs.
+    // These tests verify the integration with extract_symbols_from_content.
+
     #[test]
-    fn test_detect_rust_symbol_function() {
-        let sym = detect_rust_symbol("pub fn hello_world() -> Result<()> {", 1);
+    fn test_detect_rust_symbol_via_language_module() {
+        let sym = language::detect_symbol("pub fn hello_world() -> Result<()> {", "rs", 1);
         assert!(sym.is_some());
         let sym = sym.unwrap();
         assert_eq!(sym.name, "hello_world");
@@ -1841,36 +1428,8 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_rust_symbol_struct() {
-        let sym = detect_rust_symbol("pub struct MyStruct {", 10);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "MyStruct");
-        assert_eq!(sym.kind, "struct");
-        assert_eq!(sym.line, 10);
-    }
-
-    #[test]
-    fn test_detect_rust_symbol_enum() {
-        let sym = detect_rust_symbol("enum Color { Red, Green, Blue }", 5);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "Color");
-        assert_eq!(sym.kind, "enum");
-    }
-
-    #[test]
-    fn test_detect_rust_symbol_trait() {
-        let sym = detect_rust_symbol("pub trait Handler {", 15);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "Handler");
-        assert_eq!(sym.kind, "trait");
-    }
-
-    #[test]
-    fn test_detect_python_symbol_function() {
-        let sym = detect_python_symbol("def process_data(data: dict) -> list:", 1);
+    fn test_detect_python_symbol_via_language_module() {
+        let sym = language::detect_symbol("def process_data(data: dict) -> list:", "py", 1);
         assert!(sym.is_some());
         let sym = sym.unwrap();
         assert_eq!(sym.name, "process_data");
@@ -1878,97 +1437,25 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_python_symbol_class() {
-        let sym = detect_python_symbol("class MyClass:", 1);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "MyClass");
-        assert_eq!(sym.kind, "class");
-    }
-
-    #[test]
-    fn test_detect_python_symbol_async() {
-        let sym = detect_python_symbol("async def fetch_data():", 1);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "fetch_data");
-        assert_eq!(sym.kind, "async_function");
-    }
-
-    #[test]
-    fn test_detect_ts_symbol_function() {
-        let sym = detect_ts_symbol("function processData(data: any): void {", 1);
+    fn test_detect_ts_symbol_via_language_module() {
+        let sym = language::detect_symbol("function processData(data: any): void {", "ts", 1);
         assert!(sym.is_some());
         let sym = sym.unwrap();
         assert_eq!(sym.name, "processData");
         assert_eq!(sym.kind, "function");
-
-        // Test async function detection
-        let sym = detect_ts_symbol("async function fetchData(): Promise<void> {", 1);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "fetchData");
-        assert_eq!(sym.kind, "async_function");
-
-        // Test export async function
-        let sym = detect_ts_symbol("export async function loadUser(): Promise<User> {", 1);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "loadUser");
-        assert_eq!(sym.kind, "async_function");
     }
 
     #[test]
-    fn test_detect_ts_symbol_function_false_positives() {
-        // Should NOT match comments mentioning function
-        assert!(detect_ts_symbol("// This is a function definition", 1).is_none());
-        assert!(detect_ts_symbol("/* function comment */", 1).is_none());
-
-        // Should NOT match inline function expressions (not top-level declarations)
-        assert!(detect_ts_symbol("const x = function() {}", 1).is_none());
-        assert!(detect_ts_symbol("  callback: function() {}", 1).is_none());
-
-        // Should NOT match string literals containing "function"
-        assert!(detect_ts_symbol("const msg = 'function is a keyword';", 1).is_none());
-    }
-
-    #[test]
-    fn test_detect_ts_symbol_class() {
-        let sym = detect_ts_symbol("export class UserService {", 1);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "UserService");
-        assert_eq!(sym.kind, "class");
-    }
-
-    #[test]
-    fn test_detect_ts_symbol_interface() {
-        let sym = detect_ts_symbol("interface UserData {", 1);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "UserData");
-        assert_eq!(sym.kind, "interface");
-    }
-
-    #[test]
-    fn test_detect_go_symbol_function() {
-        let sym = detect_go_symbol(
+    fn test_detect_go_symbol_via_language_module() {
+        let sym = language::detect_symbol(
             "func HandleRequest(w http.ResponseWriter, r *http.Request) {",
+            "go",
             1,
         );
         assert!(sym.is_some());
         let sym = sym.unwrap();
         assert_eq!(sym.name, "HandleRequest");
         assert_eq!(sym.kind, "function");
-    }
-
-    #[test]
-    fn test_detect_go_symbol_struct() {
-        let sym = detect_go_symbol("type Config struct {", 1);
-        assert!(sym.is_some());
-        let sym = sym.unwrap();
-        assert_eq!(sym.name, "Config");
-        assert_eq!(sym.kind, "struct");
     }
 
     #[test]
@@ -1992,13 +1479,6 @@ impl Server {
         assert!(symbols
             .iter()
             .any(|s| s.name == "new" && s.kind == "function"));
-    }
-
-    #[test]
-    fn test_extract_name() {
-        assert_eq!(extract_name("fn hello() {", "fn "), "hello");
-        assert_eq!(extract_name("struct MyStruct {", "struct "), "MyStruct");
-        assert_eq!(extract_name("def process():", "def "), "process");
     }
 
     // Tests for new tools

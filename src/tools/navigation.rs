@@ -12,6 +12,7 @@ use crate::error::Result;
 use crate::mcp::handler::{error_result, get_string_arg, success_result, ToolHandler};
 use crate::mcp::protocol::{Tool, ToolResult};
 use crate::service::ContextService;
+use crate::tools::language;
 
 /// Find all references to a symbol in the codebase.
 pub struct FindReferencesTool {
@@ -571,6 +572,7 @@ async fn find_definition(
 
 /// Build a list of textual patterns commonly used to identify symbol definitions.
 ///
+/// Delegates to the centralized language module for comprehensive multi-language support.
 /// The `symbol` is inserted into language-specific declaration snippets. The optional
 /// `language` hint restricts patterns to that language when possible; otherwise a generic
 /// set of patterns for several common languages is returned.
@@ -584,71 +586,36 @@ async fn find_definition(
 /// let generic = get_definition_patterns("Thing", None);
 /// assert!(generic.iter().any(|p| p.contains("class Thing") || p.contains("struct Thing")));
 /// ```
-fn get_definition_patterns(symbol: &str, language: Option<&str>) -> Vec<String> {
-    let mut patterns = Vec::new();
-
-    match language {
-        Some("rust" | "rs") => {
-            patterns.push(format!("fn {}(", symbol));
-            patterns.push(format!("struct {} ", symbol));
-            patterns.push(format!("struct {}", symbol));
-            patterns.push(format!("enum {} ", symbol));
-            patterns.push(format!("trait {} ", symbol));
-            patterns.push(format!("type {} ", symbol));
-            patterns.push(format!("const {}", symbol));
-            patterns.push(format!("static {}", symbol));
-        }
-        Some("python" | "py") => {
-            patterns.push(format!("def {}(", symbol));
-            patterns.push(format!("class {}:", symbol));
-            patterns.push(format!("class {}(", symbol));
-        }
-        Some("typescript" | "javascript" | "ts" | "js") => {
-            patterns.push(format!("function {}(", symbol));
-            patterns.push(format!("const {} =", symbol));
-            patterns.push(format!("let {} =", symbol));
-            patterns.push(format!("class {} ", symbol));
-            patterns.push(format!("interface {} ", symbol));
-            patterns.push(format!("type {} =", symbol));
-        }
-        _ => {
-            // Generic patterns
+fn get_definition_patterns(symbol: &str, lang: Option<&str>) -> Vec<String> {
+    match lang {
+        Some(language) => language::get_definition_patterns(language, symbol),
+        None => {
+            // Generic patterns for unknown language - combine common patterns
+            let mut patterns = Vec::new();
             patterns.push(format!("fn {}(", symbol));
             patterns.push(format!("function {}(", symbol));
             patterns.push(format!("def {}(", symbol));
             patterns.push(format!("class {} ", symbol));
             patterns.push(format!("struct {} ", symbol));
             patterns.push(format!("interface {} ", symbol));
+            patterns
         }
     }
-
-    patterns
 }
 
 /// Map a file extension to a canonical language identifier.
 ///
-/// Recognizes common source file extensions and returns a short language name; unknown extensions return `"text"`.
+/// Delegates to the centralized language module for comprehensive multi-language support.
+/// Recognizes common source file extensions and returns a short language name.
 ///
 /// # Examples
 ///
 /// ```
 /// assert_eq!(get_language("rs"), "rust");
 /// assert_eq!(get_language("tsx"), "typescript");
-/// assert_eq!(get_language("unknown"), "text");
 /// ```
 fn get_language(ext: &str) -> &'static str {
-    match ext {
-        "rs" => "rust",
-        "py" => "python",
-        "ts" | "tsx" => "typescript",
-        "js" | "jsx" => "javascript",
-        "go" => "go",
-        "java" => "java",
-        "rb" => "ruby",
-        "c" | "h" => "c",
-        "cpp" | "hpp" | "cc" => "cpp",
-        _ => "text",
-    }
+    language::extension_to_language(ext)
 }
 
 /// Checks whether a filename matches a simple pattern.
@@ -776,33 +743,52 @@ mod tests {
         assert_eq!(get_language("rs"), "rust");
         assert_eq!(get_language("py"), "python");
         assert_eq!(get_language("ts"), "typescript");
-        assert_eq!(get_language("tsx"), "typescript");
+        assert_eq!(get_language("tsx"), "react"); // tsx/jsx are React
         assert_eq!(get_language("js"), "javascript");
         assert_eq!(get_language("go"), "go");
-        assert_eq!(get_language("unknown"), "text");
+        assert_eq!(get_language("unknown"), "other");
     }
 
     #[test]
     fn test_get_definition_patterns_rust() {
         let patterns = get_definition_patterns("MyStruct", Some("rust"));
-        assert!(patterns.contains(&"struct MyStruct ".to_string()));
-        assert!(patterns.contains(&"fn MyStruct(".to_string()));
-        assert!(patterns.contains(&"enum MyStruct ".to_string()));
+        // The language module returns regex patterns
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("struct") && p.contains("MyStruct")));
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("fn") && p.contains("MyStruct")));
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("enum") && p.contains("MyStruct")));
     }
 
     #[test]
     fn test_get_definition_patterns_python() {
         let patterns = get_definition_patterns("my_func", Some("python"));
-        assert!(patterns.contains(&"def my_func(".to_string()));
-        assert!(patterns.contains(&"class my_func:".to_string()));
+        // The language module returns regex patterns
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("def") && p.contains("my_func")));
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("class") && p.contains("my_func")));
     }
 
     #[test]
     fn test_get_definition_patterns_typescript() {
         let patterns = get_definition_patterns("MyClass", Some("typescript"));
-        assert!(patterns.contains(&"class MyClass ".to_string()));
-        assert!(patterns.contains(&"interface MyClass ".to_string()));
-        assert!(patterns.contains(&"function MyClass(".to_string()));
+        // The language module returns regex patterns
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("class") && p.contains("MyClass")));
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("interface") && p.contains("MyClass")));
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("function") && p.contains("MyClass")));
     }
 
     #[test]
@@ -810,9 +796,15 @@ mod tests {
         let patterns = get_definition_patterns("Symbol", None);
         assert!(!patterns.is_empty());
         // Should have generic patterns for multiple languages
-        assert!(patterns.contains(&"fn Symbol(".to_string()));
-        assert!(patterns.contains(&"def Symbol(".to_string()));
-        assert!(patterns.contains(&"class Symbol ".to_string()));
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("fn") && p.contains("Symbol")));
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("def") && p.contains("Symbol")));
+        assert!(patterns
+            .iter()
+            .any(|p| p.contains("class") && p.contains("Symbol")));
     }
 
     #[test]
