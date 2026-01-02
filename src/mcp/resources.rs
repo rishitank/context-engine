@@ -81,7 +81,8 @@ impl ResourceRegistry {
                     .to_string_lossy()
                     .to_string();
 
-                let uri = format!("file://{}", path.display());
+                // Construct proper file:// URI (handle Windows paths)
+                let uri = Self::path_to_file_uri(path);
                 let mime_type = Self::guess_mime_type(path);
 
                 Resource {
@@ -118,13 +119,16 @@ impl ResourceRegistry {
             )));
         };
 
-        // Security: ensure path is within workspace
+        // Security: canonicalize both workspace and path, then verify path is within workspace
         let workspace = self.context_service.workspace();
+        let workspace_canonical = workspace
+            .canonicalize()
+            .map_err(|e| Error::InvalidToolArguments(format!("Cannot resolve workspace: {}", e)))?;
         let canonical = path
             .canonicalize()
             .map_err(|e| Error::InvalidToolArguments(format!("Cannot resolve path: {}", e)))?;
 
-        if !canonical.starts_with(workspace) {
+        if !canonical.starts_with(&workspace_canonical) {
             return Err(Error::InvalidToolArguments(
                 "Access denied: path outside workspace".to_string(),
             ));
@@ -233,6 +237,29 @@ impl ResourceRegistry {
             "node_modules" | "target" | "dist" | "build" | "__pycache__" | ".git"
         ) || name.ends_with(".lock")
             || name.ends_with(".pyc")
+    }
+
+    /// Convert a path to a proper file:// URI.
+    /// Handles Windows paths by converting backslashes and adding leading slash.
+    fn path_to_file_uri(path: &std::path::Path) -> String {
+        let path_str = path.to_string_lossy();
+
+        // On Windows, paths like C:\foo\bar need to become file:///C:/foo/bar
+        #[cfg(windows)]
+        {
+            let normalized = path_str.replace('\\', "/");
+            if normalized.chars().nth(1) == Some(':') {
+                // Absolute Windows path like C:/foo
+                format!("file:///{}", normalized)
+            } else {
+                format!("file://{}", normalized)
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            format!("file://{}", path_str)
+        }
     }
 
     /// Guess MIME type from file extension.

@@ -320,8 +320,26 @@ impl ToolHandler for ExtractSymbolsTool {
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let file_path = get_string_arg(&args, "file_path")?;
 
-        let full_path = self.service.workspace_path().join(&file_path);
-        let content = match fs::read_to_string(&full_path).await {
+        let workspace = self.service.workspace_path();
+        let full_path = workspace.join(&file_path);
+
+        // Security: canonicalize and verify path stays within workspace
+        let workspace_canonical = match workspace.canonicalize() {
+            Ok(p) => p,
+            Err(e) => return Ok(error_result(format!("Cannot resolve workspace: {}", e))),
+        };
+        let path_canonical = match full_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => return Ok(error_result(format!("Cannot resolve {}: {}", file_path, e))),
+        };
+        if !path_canonical.starts_with(&workspace_canonical) {
+            return Ok(error_result(format!(
+                "Path escapes workspace: {}",
+                file_path
+            )));
+        }
+
+        let content = match fs::read_to_string(&path_canonical).await {
             Ok(c) => c,
             Err(e) => return Ok(error_result(format!("Failed to read file: {}", e))),
         };
@@ -410,8 +428,21 @@ fn detect_rust_symbol(line: &str, line_num: usize) -> Option<Symbol> {
         });
     }
     if line.starts_with("impl ") {
-        let name = line.strip_prefix("impl ").unwrap_or(line);
-        let name = name.split_whitespace().next().unwrap_or("").to_string();
+        let rest = line.strip_prefix("impl ").unwrap_or(line);
+        // Skip generic parameters if present (e.g., impl<T> Foo<T>)
+        let rest = if rest.starts_with('<') {
+            rest.split_once('>')
+                .map(|(_, after)| after.trim_start())
+                .unwrap_or(rest)
+        } else {
+            rest
+        };
+        // Extract the type/trait name (first identifier before '<', ' ', '{', or 'for')
+        let name = rest
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .next()
+            .unwrap_or("")
+            .to_string();
         return Some(Symbol {
             name,
             kind: "impl".to_string(),

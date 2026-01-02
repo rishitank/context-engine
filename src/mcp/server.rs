@@ -70,6 +70,8 @@ pub struct McpServer {
     roots: Arc<RwLock<Vec<PathBuf>>>,
     /// Active request IDs for cancellation support.
     active_requests: Arc<RwLock<HashSet<RequestId>>>,
+    /// Explicitly cancelled request IDs.
+    cancelled_requests: Arc<RwLock<HashSet<RequestId>>>,
     /// Current log level.
     log_level: Arc<RwLock<LogLevel>>,
 }
@@ -85,6 +87,7 @@ impl McpServer {
             version: VERSION.to_string(),
             roots: Arc::new(RwLock::new(Vec::new())),
             active_requests: Arc::new(RwLock::new(HashSet::new())),
+            cancelled_requests: Arc::new(RwLock::new(HashSet::new())),
             log_level: Arc::new(RwLock::new(LogLevel::default())),
         }
     }
@@ -104,6 +107,7 @@ impl McpServer {
             version: VERSION.to_string(),
             roots: Arc::new(RwLock::new(Vec::new())),
             active_requests: Arc::new(RwLock::new(HashSet::new())),
+            cancelled_requests: Arc::new(RwLock::new(HashSet::new())),
             log_level: Arc::new(RwLock::new(LogLevel::default())),
         }
     }
@@ -123,9 +127,20 @@ impl McpServer {
         self.roots.read().await.clone()
     }
 
-    /// Check if a request has been cancelled.
+    /// Check if a request has been explicitly cancelled.
     pub async fn is_cancelled(&self, id: &RequestId) -> bool {
-        !self.active_requests.read().await.contains(id)
+        self.cancelled_requests.read().await.contains(id)
+    }
+
+    /// Mark a request as cancelled.
+    pub async fn cancel_request(&self, id: &RequestId) {
+        self.cancelled_requests.write().await.insert(id.clone());
+    }
+
+    /// Clean up a completed request from tracking sets.
+    pub async fn complete_request(&self, id: &RequestId) {
+        self.active_requests.write().await.remove(id);
+        self.cancelled_requests.write().await.remove(id);
     }
 
     /// Run the server with the given transport.
@@ -190,8 +205,8 @@ impl McpServer {
             ))),
         };
 
-        // Remove from active requests
-        self.active_requests.write().await.remove(&req.id);
+        // Clean up request tracking
+        self.complete_request(&req.id).await;
 
         match result {
             Ok(value) => JsonRpcResponse {
@@ -222,7 +237,7 @@ impl McpServer {
                 info!("Client initialized");
             }
             "notifications/cancelled" => {
-                // Extract the request ID from params and cancel it
+                // Extract the request ID from params and mark it as cancelled
                 if let Some(params) = notif.params {
                     #[derive(serde::Deserialize)]
                     struct CancelledParams {
@@ -231,10 +246,7 @@ impl McpServer {
                     }
                     if let Ok(cancel) = serde_json::from_value::<CancelledParams>(params) {
                         info!("Cancelling request: {:?}", cancel.request_id);
-                        self.active_requests
-                            .write()
-                            .await
-                            .remove(&cancel.request_id);
+                        self.cancel_request(&cancel.request_id).await;
                     }
                 }
             }

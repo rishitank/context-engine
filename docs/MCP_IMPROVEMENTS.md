@@ -5,23 +5,27 @@ This document outlines potential improvements to make the Context Engine MCP Ser
 ## Current Implementation Status
 
 ### ✅ Fully Implemented
-- **Tools** - All 49 tools for retrieval, indexing, memory, planning, and review
+- **Tools** - All 55 tools for retrieval, indexing, memory, planning, review, navigation, and workspace analysis
 - **JSON-RPC 2.0** - Full request/response/notification handling
 - **Stdio Transport** - Standard input/output for MCP clients
 - **HTTP Transport** - Axum-based HTTP server with SSE
-- **Logging Capability** - Structured logging support
+- **Logging Capability** - Structured logging support with `logging/setLevel` handler
 - **Tools List Changed** - Dynamic tool list notifications
+- **Resources** - Full `resources/list` and `resources/read` with file:// URI scheme
+- **Resource Subscriptions** - Subscribe/unsubscribe to file changes
+- **Prompts** - 5 pre-defined prompt templates with argument substitution
+- **Completions API** - Autocomplete suggestions for tool/prompt arguments
+- **Progress Notifications** - Long-running operation progress with ProgressReporter
+- **Cancellation** - Cancel in-progress operations via `notifications/cancelled`
+- **Roots Support** - Client-provided workspace roots via `roots/list`
+- **Navigation Tools** - `find_references`, `go_to_definition`, `diff_files`
+- **Workspace Tools** - `workspace_stats`, `git_status`, `extract_symbols`
 
 ### 🔶 Partially Implemented
-- **Resources** - Capability declared but not actively used
-- **Prompts** - Capability declared but no prompts defined
+- **Resource Templates** - URI templates for dynamic resources (planned)
 
 ### ❌ Not Yet Implemented
-- **Resource Subscriptions** - Subscribe to file/resource changes
-- **Prompt Templates** - Pre-defined prompt templates with arguments
-- **Completions API** - Autocomplete suggestions for prompts/resources
-- **Progress Notifications** - Long-running operation progress
-- **Cancellation** - Cancel in-progress operations
+- **Sampling** - Server-initiated LLM requests (requires client support)
 
 ---
 
@@ -199,24 +203,30 @@ Bridge with LSP servers for richer code intelligence.
 
 ## Implementation Priority
 
-### Phase 1 (Next Release)
+### Phase 1 (v2.0.0 - Complete ✅)
 1. ✅ Workflow improvements (PR-based releases)
 2. ✅ Dependabot configuration
-3. 🔲 Prompt templates (basic set)
-4. 🔲 find_references tool
-5. 🔲 go_to_definition tool
+3. ✅ Prompt templates (5 templates with conditionals)
+4. ✅ find_references tool
+5. ✅ go_to_definition tool
+6. ✅ Resource subscriptions
+7. ✅ Progress notifications
+8. ✅ diff_files tool
+9. ✅ Completions API
+10. ✅ Request cancellation
+11. ✅ Workspace analysis tools (workspace_stats, git_status, extract_symbols)
+12. ✅ logging/setLevel handler
 
-### Phase 2
-1. 🔲 Resource subscriptions
-2. 🔲 Progress notifications
-3. 🔲 diff_files tool
-4. 🔲 Caching layer
+### Phase 2 (Next)
+1. 🔲 Caching layer for expensive operations
+2. 🔲 Plugin system for extensibility
+3. 🔲 AST query tool (tree-sitter integration)
+4. 🔲 Dependency graph analysis
 
-### Phase 3
-1. 🔲 Completions API
-2. 🔲 Plugin system
-3. 🔲 AST query tool
-4. 🔲 Request cancellation
+### Phase 3 (Future)
+1. 🔲 LSP integration for richer code intelligence
+2. 🔲 Sampling support (server-initiated LLM requests)
+3. 🔲 Resource templates for dynamic URIs
 
 ---
 

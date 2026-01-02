@@ -206,37 +206,58 @@ Include:
         self.prompts.get(name).map(|(prompt, template)| {
             let mut text = template.template.clone();
 
-            // Simple template substitution
+            // First, handle all conditionals (before simple substitution)
+            // Find all {{#if var}}...{{/if}} blocks and process them
+            loop {
+                let if_start = text.find("{{#if ");
+                if if_start.is_none() {
+                    break;
+                }
+                let start = if_start.unwrap();
+
+                // Find the variable name
+                let var_start = start + 6; // "{{#if " is 6 chars
+                let var_end = match text[var_start..].find("}}") {
+                    Some(pos) => var_start + pos,
+                    None => break,
+                };
+                let var_name = text[var_start..var_end].trim();
+
+                // Find the matching {{/if}}
+                let block_start = var_end + 2; // skip "}}"
+                let endif_pos = match text[block_start..].find("{{/if}}") {
+                    Some(pos) => block_start + pos,
+                    None => break,
+                };
+                let content = &text[block_start..endif_pos];
+                let block_end = endif_pos + 7; // "{{/if}}" is 7 chars
+
+                // Check if the variable is provided and non-empty
+                let should_include = arguments
+                    .get(var_name)
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(false);
+
+                if should_include {
+                    // Keep the content, remove the markers
+                    text = format!("{}{}{}", &text[..start], content, &text[block_end..]);
+                } else {
+                    // Remove the entire block including markers
+                    text = format!("{}{}", &text[..start], &text[block_end..]);
+                }
+            }
+
+            // Simple template substitution for {{variable}}
             for (key, value) in arguments {
                 text = text.replace(&format!("{{{{{}}}}}", key), value);
             }
 
-            // Handle conditionals (very simple implementation)
-            // {{#if var}}content{{/if}}
-            for (key, value) in arguments {
-                let if_pattern = format!("{{{{#if {}}}}}", key);
-                let endif_pattern = "{{/if}}";
-
-                if let Some(start) = text.find(&if_pattern) {
-                    if let Some(end) = text[start..].find(endif_pattern) {
-                        let content = &text[start + if_pattern.len()..start + end];
-                        if !value.is_empty() {
-                            text = text
-                                .replace(&text[start..start + end + endif_pattern.len()], content);
-                        } else {
-                            text =
-                                text.replace(&text[start..start + end + endif_pattern.len()], "");
-                        }
-                    }
-                }
+            // Replace any remaining unsubstituted placeholders with empty string
+            // This handles optional arguments that weren't provided
+            let placeholder_re = regex::Regex::new(r"\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\}").ok();
+            if let Some(re) = placeholder_re {
+                text = re.replace_all(&text, "").to_string();
             }
-
-            // Clean up remaining template markers
-            text = text
-                .lines()
-                .filter(|line| !line.contains("{{#if") && !line.contains("{{/if}}"))
-                .collect::<Vec<_>>()
-                .join("\n");
 
             GetPromptResult {
                 description: Some(prompt.description.clone()),
@@ -273,5 +294,79 @@ mod tests {
 
         let result = result.unwrap();
         assert_eq!(result.messages.len(), 1);
+    }
+
+    #[test]
+    fn test_get_nonexistent_prompt() {
+        let registry = PromptRegistry::new();
+        let args = HashMap::new();
+        let result = registry.get("nonexistent_prompt", &args);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_get_prompt_missing_required_args() {
+        let registry = PromptRegistry::new();
+        // code_review requires 'code' and 'language' but we provide neither
+        let args = HashMap::new();
+        let result = registry.get("code_review", &args);
+        assert!(result.is_some());
+        // The template placeholders should be removed (empty string replacement)
+        let text = match &result.unwrap().messages[0].content {
+            PromptContent::Text { text } => text.clone(),
+            _ => panic!("Expected text content"),
+        };
+        // Should not contain unsubstituted placeholders
+        assert!(!text.contains("{{code}}"));
+        assert!(!text.contains("{{language}}"));
+    }
+
+    #[test]
+    fn test_get_prompt_empty_arg_values() {
+        let registry = PromptRegistry::new();
+        let mut args = HashMap::new();
+        args.insert("code".to_string(), "".to_string());
+        args.insert("language".to_string(), "".to_string());
+
+        let result = registry.get("code_review", &args);
+        assert!(result.is_some());
+        // Empty values should still work (conditionals should hide content)
+    }
+
+    #[test]
+    fn test_conditional_with_value() {
+        let registry = PromptRegistry::new();
+        let mut args = HashMap::new();
+        args.insert("code".to_string(), "fn test() {}".to_string());
+        args.insert("language".to_string(), "rust".to_string());
+        args.insert("focus".to_string(), "security".to_string());
+
+        let result = registry.get("code_review", &args);
+        assert!(result.is_some());
+        let text = match &result.unwrap().messages[0].content {
+            PromptContent::Text { text } => text.clone(),
+            _ => panic!("Expected text content"),
+        };
+        // With focus provided, the conditional content should be included
+        assert!(text.contains("security"));
+    }
+
+    #[test]
+    fn test_conditional_without_value() {
+        let registry = PromptRegistry::new();
+        let mut args = HashMap::new();
+        args.insert("code".to_string(), "fn test() {}".to_string());
+        args.insert("language".to_string(), "rust".to_string());
+        // Don't provide 'focus' - conditional should be removed
+
+        let result = registry.get("code_review", &args);
+        assert!(result.is_some());
+        let text = match &result.unwrap().messages[0].content {
+            PromptContent::Text { text } => text.clone(),
+            _ => panic!("Expected text content"),
+        };
+        // Without focus, the conditional content should be removed
+        assert!(!text.contains("{{#if"));
+        assert!(!text.contains("{{/if}}"));
     }
 }
