@@ -71,14 +71,32 @@ pub struct PromptTemplate {
 }
 
 impl PromptRegistry {
-    /// Create a new registry with built-in prompts.
+    /// Creates a new registry populated with the built-in prompts.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let registry = crate::mcp::prompts::PromptRegistry::new();
+    /// assert!(!registry.list().is_empty());
+    /// ```
     pub fn new() -> Self {
         let mut registry = Self::default();
         registry.register_builtin_prompts();
         registry
     }
 
-    /// Register built-in prompts.
+    /// Populates the registry with the built-in prompt definitions used by the application.
+    ///
+    /// Registers three prompts — "code_review", "explain_code", and "write_tests" — each with their
+    /// argument metadata and template text (including conditional sections and variable placeholders).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let registry = crate::mcp::prompts::PromptRegistry::new();
+    /// let names: Vec<_> = registry.list().into_iter().map(|p| p.name).collect();
+    /// assert!(names.contains(&"code_review".to_string()));
+    /// ```
     fn register_builtin_prompts(&mut self) {
         // Code Review Prompt
         self.register(
@@ -191,17 +209,58 @@ Include:
         );
     }
 
-    /// Register a prompt.
+    /// Adds or updates a prompt and its template in the registry.
+    ///
+    /// The provided `prompt` is stored under its `name`; if a prompt with the same name
+    /// already exists it will be replaced along with its template.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut registry = PromptRegistry::new();
+    /// let prompt = Prompt {
+    ///     name: "example".to_string(),
+    ///     description: "An example prompt".to_string(),
+    ///     arguments: vec![],
+    /// };
+    /// let template = PromptTemplate { template: "Hello {{name}}".to_string() };
+    /// registry.register(prompt, template);
+    /// assert!(registry.list().iter().any(|p| p.name == "example"));
+    /// ```
     pub fn register(&mut self, prompt: Prompt, template: PromptTemplate) {
         self.prompts.insert(prompt.name.clone(), (prompt, template));
     }
 
-    /// List all prompts.
+    /// Retrieve all registered prompts.
+    ///
+    /// Returns a vector containing a clone of each registered `Prompt`. The order of prompts is not guaranteed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let registry = PromptRegistry::new();
+    /// let prompts = registry.list();
+    /// assert!(prompts.iter().any(|p| p.name == "code_review"));
+    /// ```
     pub fn list(&self) -> Vec<Prompt> {
         self.prompts.values().map(|(p, _)| p.clone()).collect()
     }
 
-    /// Get a prompt by name with arguments substituted.
+    /// Retrieve a registered prompt by name and render its template using the provided arguments.
+    ///
+    /// The template supports conditional blocks of the form `{{#if var}}...{{/if}}` (the block is included only when `var` is present and not empty) and simple `{{variable}}` substitutions. Any remaining unsubstituted placeholders are removed from the output. Returns `None` if no prompt with the given name exists. On success the result contains the prompt description and a single user-role message with the rendered text.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::HashMap;
+    ///
+    /// let registry = PromptRegistry::new();
+    /// let mut args = HashMap::new();
+    /// args.insert("code".to_string(), "fn main() {}".to_string());
+    /// let res = registry.get("code_review", &args);
+    /// assert!(res.is_some());
+    /// ```
     pub fn get(&self, name: &str, arguments: &HashMap<String, String>) -> Option<GetPromptResult> {
         self.prompts.get(name).map(|(prompt, template)| {
             let mut text = template.template.clone();
