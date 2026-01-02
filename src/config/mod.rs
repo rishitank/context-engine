@@ -57,17 +57,12 @@ pub struct Args {
 }
 
 /// Transport mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Transport {
+    #[default]
     Stdio,
     Http,
-}
-
-impl Default for Transport {
-    fn default() -> Self {
-        Self::Stdio
-    }
 }
 
 /// Server configuration.

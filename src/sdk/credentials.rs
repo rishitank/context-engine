@@ -127,8 +127,8 @@ mod tests {
 
         // Should fail if no session file exists
         // (This test may pass if session file exists on the system)
-        if result.is_err() {
-            assert!(matches!(result.unwrap_err(), Error::CredentialsNotFound(_)));
+        if let Err(e) = result {
+            assert!(matches!(e, Error::CredentialsNotFound(_)));
         }
     }
 }
