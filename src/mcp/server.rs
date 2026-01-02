@@ -558,9 +558,7 @@ impl McpServer {
             let p: SetLevelParams = serde_json::from_value(params)?;
             p.level
         } else {
-            return Err(Error::McpProtocol(
-                "Missing level parameter".to_string(),
-            ));
+            return Err(Error::McpProtocol("Missing level parameter".to_string()));
         };
 
         let level = LogLevel::from_str(&level_str);

@@ -1,6 +1,6 @@
 //! MCP tool implementations.
 //!
-//! This module contains all 52 MCP tools organized by category:
+//! This module contains all 55 MCP tools organized by category:
 //!
 //! - `retrieval` - Codebase search and context retrieval (6 tools)
 //! - `index` - Index management tools (5 tools)
@@ -8,6 +8,7 @@
 //! - `memory` - Persistent memory storage (4 tools)
 //! - `review` - Code review tools (14 tools)
 //! - `navigation` - Code navigation tools (3 tools)
+//! - `workspace` - Workspace analysis tools (3 tools)
 
 pub mod index;
 pub mod memory;
@@ -15,6 +16,7 @@ pub mod navigation;
 pub mod planning;
 pub mod retrieval;
 pub mod review;
+pub mod workspace;
 
 use std::sync::Arc;
 
@@ -94,5 +96,10 @@ pub fn register_all_tools(
     // Navigation tools (3)
     handler.register(navigation::FindReferencesTool::new(context_service.clone()));
     handler.register(navigation::GoToDefinitionTool::new(context_service.clone()));
-    handler.register(navigation::DiffFilesTool::new(context_service));
+    handler.register(navigation::DiffFilesTool::new(context_service.clone()));
+
+    // Workspace tools (3)
+    handler.register(workspace::WorkspaceStatsTool::new(context_service.clone()));
+    handler.register(workspace::GitStatusTool::new(context_service.clone()));
+    handler.register(workspace::ExtractSymbolsTool::new(context_service));
 }
