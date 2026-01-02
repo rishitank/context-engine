@@ -961,29 +961,17 @@ fn detect_go_symbol(line: &str, line_num: usize) -> Option<Symbol> {
 }
 
 /// Extracts the identifier immediately following a given prefix in a line.
-
 ///
-
 /// The function finds the first occurrence of `prefix` in `line` and returns the contiguous
-
 /// sequence of ASCII letters, digits, or underscores that follows it. If the prefix is not
-
 /// present or no valid identifier follows, an empty string is returned.
-
 ///
-
 /// # Examples
-
 ///
-
 /// ```
-
 /// assert_eq!(extract_name("pub fn hello_world()", "fn "), "hello_world");
-
 /// assert_eq!(extract_name("impl<T> MyType<T> {", "impl "), "MyType");
-
 /// assert_eq!(extract_name("let x = 1;", "const "), "");
-
 /// ```
 fn extract_name(line: &str, prefix: &str) -> String {
     line.split(prefix)

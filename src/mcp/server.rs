@@ -212,19 +212,12 @@ impl McpServer {
     }
 
     /// Returns whether the given request ID has been explicitly cancelled.
-
     ///
-
     /// # Examples
-
     ///
-
     /// ```
-
     /// // Assuming `server: McpServer` and `id: RequestId` are available:
-
     /// // let cancelled = server.is_cancelled(&id).await;
-
     /// ```
     pub async fn is_cancelled(&self, id: &RequestId) -> bool {
         self.cancelled_requests.read().await.contains(id)
@@ -380,9 +373,10 @@ impl McpServer {
     /// Process an incoming JSON-RPC notification and perform any side effects for known notification types.
     ///
     /// Known notifications handled:
-    /// - "notifications/initialized": logs client initialization.
-    /// - "notifications/cancelled": extracts a `requestId` from `params` and marks the request cancelled.
-    /// - "notifications/roots/listChanged": logs that client workspace roots changed.
+    /// - `notifications/initialized`: logs client initialization.
+    /// - `notifications/cancelled`: extracts a `requestId` from `params` and marks the request cancelled.
+    /// - `notifications/roots/listChanged`: logs that client workspace roots changed.
+    ///
     /// Unknown notifications are ignored (logged at debug level).
     ///
     /// # Examples

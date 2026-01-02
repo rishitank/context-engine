@@ -271,19 +271,12 @@ impl ProgressManager {
 
 impl Default for ProgressManager {
     /// Creates a ProgressManager initialized with its standard channel and token counter.
-
     ///
-
     /// # Examples
-
     ///
-
     /// ```
-
     /// let mgr = crate::mcp::progress::ProgressManager::default();
-
     /// let _recv = mgr.receiver();
-
     /// ```
     fn default() -> Self {
         Self::new()

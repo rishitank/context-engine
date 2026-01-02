@@ -570,33 +570,19 @@ async fn find_definition(
 }
 
 /// Build a list of textual patterns commonly used to identify symbol definitions.
-
 ///
-
 /// The `symbol` is inserted into language-specific declaration snippets. The optional
-
 /// `language` hint restricts patterns to that language when possible; otherwise a generic
-
 /// set of patterns for several common languages is returned.
-
 ///
-
 /// # Examples
-
 ///
-
 /// ```
-
 /// let pats = get_definition_patterns("my_fn", Some("rust"));
-
 /// assert!(pats.iter().any(|p| p == "fn my_fn("));
-
 ///
-
 /// let generic = get_definition_patterns("Thing", None);
-
 /// assert!(generic.iter().any(|p| p.contains("class Thing") || p.contains("struct Thing")));
-
 /// ```
 fn get_definition_patterns(symbol: &str, language: Option<&str>) -> Vec<String> {
     let mut patterns = Vec::new();
