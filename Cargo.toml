@@ -1,0 +1,88 @@
+[package]
+name = "context-engine-rs"
+version = "2.0.0"
+edition = "2021"
+description = "A high-performance MCP server for AI-powered codebase context retrieval"
+authors = ["Rishi Tank"]
+license = "MIT"
+repository = "https://github.com/rishitank/context-engine"
+keywords = ["mcp", "ai", "code-review", "context", "codebase"]
+categories = ["development-tools", "command-line-utilities"]
+
+[[bin]]
+name = "context-engine"
+path = "src/main.rs"
+
+[lib]
+name = "context_engine_rs"
+path = "src/lib.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.48", features = ["full", "sync", "time", "fs", "io-util", "net", "rt-multi-thread", "macros"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio-stream = "0.1"
+futures = "0.3"
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# HTTP client/server
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "rustls-tls"], default-features = false }
+axum = { version = "0.8", features = ["json"] }
+tower = { version = "0.5", features = ["timeout", "limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+
+# CLI and configuration
+clap = { version = "4", features = ["derive", "env"] }
+dotenvy = "0.15"
+dirs = "6.0"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Metrics
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# Utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+glob = "0.3"
+walkdir = "2"
+similar = "2"
+sha2 = "0.10"
+hex = "0.4"
+dashmap = "6"
+anyhow = "1"
+thiserror = "1"
+
+# File watching
+notify = "7"
+notify-debouncer-mini = "0.5"
+
+# Async compression
+async-compression = { version = "0.4", features = ["tokio", "gzip", "brotli", "deflate"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+

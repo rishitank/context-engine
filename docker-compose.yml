@@ -1,0 +1,57 @@
+# Docker Compose for Context Engine MCP Server
+#
+# Usage:
+#   docker-compose up -d        # Start in HTTP mode
+#   docker-compose logs -f      # View logs
+#   docker-compose down         # Stop
+
+version: '3.8'
+
+services:
+  context-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: context-engine:latest
+    container_name: context-engine
+    restart: unless-stopped
+    
+    # Mount your project directory
+    volumes:
+      - ${PROJECT_PATH:-.}:/workspace:ro
+      - augment-config:/home/context-engine/.augment:ro
+    
+    # Environment configuration
+    environment:
+      - CONTEXT_ENGINE_TRANSPORT=http
+      - CONTEXT_ENGINE_PORT=3000
+      - CONTEXT_ENGINE_WORKSPACE=/workspace
+      - CONTEXT_ENGINE_TOKEN_BUDGET=${TOKEN_BUDGET:-8000}
+      - CONTEXT_ENGINE_METRICS=true
+      - CONTEXT_ENGINE_METRICS_PORT=9090
+      # API credentials (optional - will use ~/.augment/session.json if not set)
+      - AUGMENT_API_TOKEN=${AUGMENT_API_TOKEN:-}
+      - AUGMENT_API_URL=${AUGMENT_API_URL:-}
+    
+    # Expose ports
+    ports:
+      - "3000:3000"   # MCP HTTP API
+      - "9090:9090"   # Prometheus metrics
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# Named volume for Augment credentials
+volumes:
+  augment-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HOME}/.augment
+

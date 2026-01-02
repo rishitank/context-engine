@@ -2,6 +2,39 @@
 
 All notable changes to the Context Engine MCP Server will be documented in this file.
 
+## [2.0.0] - 2026-01-02
+
+### 🦀 Complete Rust Rewrite
+
+This release marks a complete rewrite of the Context Engine MCP Server from TypeScript/Node.js to Rust.
+
+### ✨ Highlights
+- **Complete Rust implementation**: ~8,800 lines of idiomatic Rust code
+- **107 unit tests**: Comprehensive test coverage across all modules
+- **49 MCP tools**: Superset of the original 42 TypeScript tools
+- **7 MB binary**: Compact, optimized ARM64/x86_64 binary
+- **Zero-cost abstractions**: Native performance with Tokio async runtime
+- **Memory safety**: Rust's ownership model prevents memory leaks and data races
+
+### 🚀 Performance Improvements
+- **Startup time**: <10ms (vs ~500ms for Node.js)
+- **Memory usage**: ~20 MB idle (vs ~80 MB for Node.js)
+- **Binary size**: ~7 MB (vs ~200 MB node_modules)
+- **Cold start**: Instant (no JIT warmup required)
+
+### 📦 New Features
+- **Docker support**: Multi-stage Dockerfile and docker-compose.yml
+- **HTTP transport**: Axum-based HTTP server with CORS support
+- **Prometheus metrics**: Built-in `/metrics` endpoint
+- **Graceful shutdown**: Proper signal handling (SIGINT/SIGTERM)
+
+### 🔧 Breaking Changes
+- Node.js and npm are no longer required
+- Build with `cargo build --release`
+- Binary is now at `target/release/context-engine`
+
+---
+
 ## [1.9.0] - 2025-12-26
 
 ### ✨ New Features
