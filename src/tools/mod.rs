@@ -1,6 +1,6 @@
 //! MCP tool implementations.
 //!
-//! This module contains all 55 MCP tools organized by category:
+//! This module contains all 59 MCP tools organized by category:
 //!
 //! - `retrieval` - Codebase search and context retrieval (6 tools)
 //! - `index` - Index management tools (5 tools)
@@ -8,7 +8,7 @@
 //! - `memory` - Persistent memory storage (4 tools)
 //! - `review` - Code review tools (14 tools)
 //! - `navigation` - Code navigation tools (3 tools)
-//! - `workspace` - Workspace analysis tools (3 tools)
+//! - `workspace` - Workspace analysis and git tools (7 tools)
 
 pub mod index;
 pub mod memory;
@@ -98,8 +98,12 @@ pub fn register_all_tools(
     handler.register(navigation::GoToDefinitionTool::new(context_service.clone()));
     handler.register(navigation::DiffFilesTool::new(context_service.clone()));
 
-    // Workspace tools (3)
+    // Workspace tools (7)
     handler.register(workspace::WorkspaceStatsTool::new(context_service.clone()));
     handler.register(workspace::GitStatusTool::new(context_service.clone()));
-    handler.register(workspace::ExtractSymbolsTool::new(context_service));
+    handler.register(workspace::ExtractSymbolsTool::new(context_service.clone()));
+    handler.register(workspace::GitBlameTool::new(context_service.clone()));
+    handler.register(workspace::GitLogTool::new(context_service.clone()));
+    handler.register(workspace::DependencyGraphTool::new(context_service.clone()));
+    handler.register(workspace::FileOutlineTool::new(context_service));
 }
