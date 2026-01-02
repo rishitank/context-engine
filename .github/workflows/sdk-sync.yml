@@ -1,0 +1,115 @@
+name: SDK Sync Check
+
+# This workflow helps track when the Augment SDK may need updates
+# Since the Augment SDK is implemented locally (not from a package registry),
+# this workflow periodically checks for API changes and creates issues/reminders
+
+on:
+  schedule:
+    # Run every Monday at 10am UTC
+    - cron: '0 10 * * 1'
+  workflow_dispatch:
+    inputs:
+      create_issue:
+        description: 'Create a tracking issue'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check SDK builds successfully
+        run: cargo build --release
+
+      - name: Run SDK tests
+        run: cargo test --lib -- sdk
+
+      - name: Check for SDK-related TODOs
+        id: todos
+        run: |
+          # Find any TODOs related to SDK updates
+          TODOS=$(grep -r "TODO.*SDK\|TODO.*Augment\|FIXME.*SDK\|FIXME.*Augment" src/sdk/ 2>/dev/null || echo "")
+          if [ -n "$TODOS" ]; then
+            echo "Found SDK-related TODOs:"
+            echo "$TODOS"
+            echo "has_todos=true" >> $GITHUB_OUTPUT
+            echo "todos<<EOF" >> $GITHUB_OUTPUT
+            echo "$TODOS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "No SDK-related TODOs found"
+            echo "has_todos=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create tracking issue
+        if: steps.todos.outputs.has_todos == 'true' || github.event.inputs.create_issue == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const todos = `${{ steps.todos.outputs.todos }}`;
+            const title = `[SDK Sync] Weekly Augment SDK Review - ${new Date().toISOString().split('T')[0]}`;
+            
+            // Check if issue already exists this week
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'sdk-sync',
+              per_page: 5
+            });
+            
+            const weekStart = new Date();
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            
+            const existingIssue = issues.find(i => 
+              new Date(i.created_at) >= weekStart
+            );
+            
+            if (existingIssue) {
+              console.log(`Issue already exists: #${existingIssue.number}`);
+              return;
+            }
+            
+            let body = `## Weekly SDK Sync Check\n\n`;
+            body += `This is an automated reminder to review the Augment SDK implementation.\n\n`;
+            
+            if (todos) {
+              body += `### Found TODOs\n\n\`\`\`\n${todos}\n\`\`\`\n\n`;
+            }
+            
+            body += `### Checklist\n\n`;
+            body += `- [ ] Check if Augment API has new endpoints\n`;
+            body += `- [ ] Review any SDK-related issues or feedback\n`;
+            body += `- [ ] Update type definitions if needed\n`;
+            body += `- [ ] Run integration tests with latest API\n`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['sdk-sync', 'maintenance']
+            });
+

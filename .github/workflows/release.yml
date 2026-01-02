@@ -1,15 +1,91 @@
 name: Release
 
 on:
+  # Manual trigger with version input
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 2.0.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Is this a pre-release?'
+        required: false
+        type: boolean
+        default: false
+  # Triggered by tag push (manual releases)
   push:
     tags:
       - 'v*'
+  # Triggered after successful CI on main
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
+  # Check if release should proceed
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check release conditions
+        id: check
+        run: |
+          # For workflow_dispatch, always release with provided version
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # For tag push, always release
+          if [ "${{ github.event_name }}" == "push" ] && [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # For workflow_run, check if CI succeeded and version changed
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "CI did not succeed, skipping release"
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            # Get version from Cargo.toml
+            VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+
+            # Check if this version tag already exists
+            if git tag -l "v$VERSION" | grep -q .; then
+              echo "Tag v$VERSION already exists, skipping release"
+              echo "should_release=false" >> $GITHUB_OUTPUT
+            else
+              echo "New version v$VERSION detected, will release"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version=$VERSION" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
+
+          echo "Unknown trigger, skipping release"
+          echo "should_release=false" >> $GITHUB_OUTPUT
+
   build:
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
     strategy:
       matrix:
         include:
@@ -46,24 +122,38 @@ jobs:
           path: ${{ matrix.artifact }}
 
   release:
-    needs: build
+    needs: [check, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
+      - name: Create and push tag
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: v${{ needs.check.outputs.version }}
+          name: v${{ needs.check.outputs.version }}
           files: |
             artifacts/**/*
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

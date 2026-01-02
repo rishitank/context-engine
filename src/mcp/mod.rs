@@ -9,13 +9,16 @@
 //! - `server` - MCP server implementation
 //! - `transport` - Transport layer (stdio, HTTP/SSE)
 //! - `handler` - Request/notification handlers
+//! - `prompts` - Prompt templates for common tasks
 
 pub mod handler;
+pub mod prompts;
 pub mod protocol;
 pub mod server;
 pub mod transport;
 
 pub use handler::McpHandler;
+pub use prompts::PromptRegistry;
 pub use protocol::*;
 pub use server::McpServer;
 pub use transport::{StdioTransport, Transport};
