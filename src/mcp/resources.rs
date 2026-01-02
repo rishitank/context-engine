@@ -59,7 +59,22 @@ pub struct ResourceRegistry {
 }
 
 impl ResourceRegistry {
-    /// Create a new resource registry.
+    /// Creates a new ResourceRegistry backed by the given workspace context.
+    ///
+    /// # Parameters
+    ///
+    /// - `context_service`: shared workspace context used to resolve the workspace root and related operations.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// # use crate::mcp::resources::ResourceRegistry;
+    /// # use crate::context::ContextService;
+    /// // Construct or obtain an Arc<ContextService> from your application.
+    /// let ctx: Arc<ContextService> = Arc::new(ContextService::default());
+    /// let registry = ResourceRegistry::new(ctx);
+    /// ```
     pub fn new(context_service: Arc<ContextService>) -> Self {
         Self {
             context_service,
@@ -67,7 +82,24 @@ impl ResourceRegistry {
         }
     }
 
-    /// List available resources (files in workspace).
+    /// Lists workspace files as `Resource` entries with optional cursor-based pagination.
+    ///
+    /// The `cursor` parameter, if provided, is a resource name to start listing after; results include up to 100 entries.
+    ///
+    /// # Returns
+    ///
+    /// `ListResourcesResult` containing the discovered resources and an optional `next_cursor` string to continue pagination.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # tokio_test::block_on(async {
+    /// // `registry` would be constructed with a real `ContextService` in production.
+    /// // let registry = ResourceRegistry::new(context_service);
+    /// // let result = registry.list(None).await.unwrap();
+    /// // assert!(result.resources.len() <= 100);
+    /// # });
+    /// ```
     pub async fn list(&self, cursor: Option<&str>) -> Result<ListResourcesResult> {
         let workspace = self.context_service.workspace();
         let files = self.discover_files(workspace, 100, cursor).await?;
@@ -107,7 +139,34 @@ impl ResourceRegistry {
         })
     }
 
-    /// Read a resource by URI.
+    /// Reads a resource identified by a `file://` URI from the workspace and returns its contents.
+    ///
+    /// # Arguments
+    ///
+    /// * `uri` - A `file://` URI pointing to a file located inside the workspace.
+    ///
+    /// # Returns
+    ///
+    /// A `ReadResourceResult` containing a single `ResourceContents` entry with the provided `uri`, the inferred `mime_type` (if any), and `text` set to the file's UTF-8 contents.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidToolArguments` when:
+    /// - the URI does not start with `file://`,
+    /// - the workspace or target path cannot be canonicalized,
+    /// - the resolved path is outside the workspace, or
+    /// - the file cannot be read.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn example_usage(registry: &crate::mcp::resources::ResourceRegistry) -> anyhow::Result<()> {
+    /// let result = registry.read("file:///path/to/workspace/file.txt").await?;
+    /// assert_eq!(result.contents.len(), 1);
+    /// let content = &result.contents[0];
+    /// assert_eq!(content.uri, "file:///path/to/workspace/file.txt");
+    /// # Ok(()) }
+    /// ```
     pub async fn read(&self, uri: &str) -> Result<ReadResourceResult> {
         // Parse file:// URI
         let path = if let Some(path) = uri.strip_prefix("file://") {
@@ -151,7 +210,28 @@ impl ResourceRegistry {
         })
     }
 
-    /// Subscribe to resource changes.
+    /// Registers a session to receive change notifications for the given resource URI.
+    ///
+    /// The session ID will be recorded in the registry's in-memory subscription map for the specified URI.
+    ///
+    /// # Parameters
+    ///
+    /// - `uri`: The resource URI to subscribe to (e.g., a `file://` URI).
+    /// - `session_id`: The identifier of the session to register for notifications.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use std::sync::Arc;
+    /// # use tokio::runtime::Runtime;
+    /// # async fn _example(registry: &crate::mcp::resources::ResourceRegistry) {
+    /// registry.subscribe("file:///path/to/file", "session-123").await.unwrap();
+    /// # }
+    /// ```
     pub async fn subscribe(&self, uri: &str, session_id: &str) -> Result<()> {
         let mut subs = self.subscriptions.write().await;
         subs.entry(uri.to_string())
@@ -160,7 +240,20 @@ impl ResourceRegistry {
         Ok(())
     }
 
-    /// Unsubscribe from resource changes.
+    /// Remove a session's subscription for the given resource URI.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use tokio::runtime::Runtime;
+    /// # // Assume `registry` is an initialized `ResourceRegistry`.
+    /// # let rt = Runtime::new().unwrap();
+    /// # rt.block_on(async {
+    /// let registry = /* ResourceRegistry instance */ unimplemented!();
+    /// registry.unsubscribe("file:///path/to/file", "session-123").await.unwrap();
+    /// # });
+    /// ```
     pub async fn unsubscribe(&self, uri: &str, session_id: &str) -> Result<()> {
         let mut subs = self.subscriptions.write().await;
         if let Some(sessions) = subs.get_mut(uri) {
@@ -230,7 +323,19 @@ impl ResourceRegistry {
         Ok(files)
     }
 
-    /// Check if a file should be ignored.
+    /// Returns whether a file or directory name matches common ignore patterns used when discovering files.
+    ///
+    /// Matches directory names: "node_modules", "target", "dist", "build", "__pycache__", ".git",
+    /// and files whose names end with `.lock` or `.pyc`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert!(should_ignore("node_modules"));
+    /// assert!(should_ignore("Cargo.lock"));
+    /// assert!(should_ignore("__pycache__"));
+    /// assert!(!should_ignore("src"));
+    /// ```
     fn should_ignore(name: &str) -> bool {
         matches!(
             name,
@@ -239,8 +344,19 @@ impl ResourceRegistry {
             || name.ends_with(".pyc")
     }
 
-    /// Convert a path to a proper file:// URI.
-    /// Handles Windows paths by converting backslashes and adding leading slash.
+    /// Convert a filesystem path to a file:// URI.
+    ///
+    /// On Windows this replaces backslashes with forward slashes and prefixes
+    /// absolute drive paths (e.g., `C:/path`) with `file:///`. On other platforms
+    /// the path is prefixed with `file://`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    /// let uri = path_to_file_uri(Path::new("/some/path"));
+    /// assert!(uri.starts_with("file://"));
+    /// ```
     fn path_to_file_uri(path: &std::path::Path) -> String {
         let path_str = path.to_string_lossy();
 
@@ -262,7 +378,19 @@ impl ResourceRegistry {
         }
     }
 
-    /// Guess MIME type from file extension.
+    /// Infer a MIME type string for a file path based on its extension.
+    ///
+    /// Returns `Some` with a guessed MIME type for known extensions, `Some("text/plain")` for unknown extensions,
+    /// and `None` if the path has no extension or the extension is not valid UTF-8.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::path::Path;
+    /// assert_eq!(guess_mime_type(Path::new("main.rs")), Some("text/x-rust".to_string()));
+    /// assert_eq!(guess_mime_type(Path::new("data.unknown")), Some("text/plain".to_string()));
+    /// assert_eq!(guess_mime_type(Path::new("no_extension")), None);
+    /// ```
     fn guess_mime_type(path: &std::path::Path) -> Option<String> {
         let ext = path.extension()?.to_str()?;
         let mime = match ext {

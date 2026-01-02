@@ -23,7 +23,24 @@ use std::sync::Arc;
 use crate::mcp::handler::McpHandler;
 use crate::service::{ContextService, MemoryService, PlanningService};
 
-/// Register all tools with the handler.
+/// Registers the built-in MCP tools with the given handler using the provided services.
+///
+/// The function registers a fixed set of tools organized by category (retrieval, index,
+/// memory, planning, review, navigation, and workspace), constructing each tool with the
+/// appropriate service(s) supplied.
+///
+/// # Examples
+///
+/// ```
+/// use std::sync::Arc;
+///
+/// let mut handler = McpHandler::new();
+/// let ctx = Arc::new(ContextService::default());
+/// let mem = Arc::new(MemoryService::default());
+/// let plan = Arc::new(PlanningService::default());
+///
+/// register_all_tools(&mut handler, ctx, mem, plan);
+/// ```
 pub fn register_all_tools(
     handler: &mut McpHandler,
     context_service: Arc<ContextService>,

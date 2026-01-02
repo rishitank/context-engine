@@ -19,6 +19,16 @@ pub struct WorkspaceStatsTool {
 }
 
 impl WorkspaceStatsTool {
+    /// Create a new WorkspaceStatsTool that uses the given ContextService.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// // `service` should be an initialized `ContextService` from the application.
+    /// let service: Arc<ContextService> = Arc::new(/* ... */);
+    /// let tool = WorkspaceStatsTool::new(service);
+    /// ```
     pub fn new(service: Arc<ContextService>) -> Self {
         Self { service }
     }
@@ -26,6 +36,17 @@ impl WorkspaceStatsTool {
 
 #[async_trait]
 impl ToolHandler for WorkspaceStatsTool {
+    /// Returns the tool descriptor for the `workspace_stats` tool.
+    ///
+    /// The descriptor includes the tool's name, a short description of what it provides,
+    /// and the JSON input schema (optionally accepts `include_hidden: bool`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let tool = WorkspaceStatsTool::new(service).definition();
+    /// assert_eq!(tool.name, "workspace_stats");
+    /// ```
     fn definition(&self) -> Tool {
         Tool {
             name: "workspace_stats".to_string(),
@@ -43,6 +64,32 @@ impl ToolHandler for WorkspaceStatsTool {
         }
     }
 
+    /// Execute the workspace statistics tool with the given arguments.
+    ///
+    /// The `args` map may include an optional `"include_hidden"` boolean; when `true` hidden files and
+    /// directories are included in the statistics. On success this returns a `ToolResult` containing a
+    /// pretty-printed JSON string of workspace statistics (total files, total lines, per-language
+    /// breakdown, and directory count). On failure this returns an error `ToolResult` with a
+    /// descriptive message.
+    ///
+    /// # Parameters
+    ///
+    /// - `args`: A map of input arguments; recognizes the optional `"include_hidden"` boolean.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::collections::HashMap;
+    /// use serde_json::json;
+    ///
+    /// // prepare args to include hidden files
+    /// let mut args = HashMap::new();
+    /// args.insert("include_hidden".to_string(), json!(true));
+    ///
+    /// // assume `tool` is an initialized `WorkspaceStatsTool`
+    /// // let result = tool.execute(args).await.unwrap();
+    /// // println!("{}", result);
+    /// ```
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let include_hidden = args
             .get("include_hidden")
@@ -73,6 +120,28 @@ struct LanguageStats {
     lines: usize,
 }
 
+/// Collects aggregated statistics for the workspace rooted at `root`.
+///
+/// Scans files and directories under `root` to compute total files, total lines,
+/// a per-language breakdown (files and lines), and the number of directories encountered.
+/// When `include_hidden` is `true`, hidden files and directories (those starting with a dot)
+/// are included in the scan; otherwise they are skipped.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() -> anyhow::Result<()> {
+/// use std::path::Path;
+/// let stats = collect_workspace_stats(Path::new("."), false).await?;
+/// // stats contains totals and per-language breakdowns
+/// assert!(stats.total_files >= 0);
+/// # Ok(()) }
+/// ```
+///
+/// # Returns
+///
+/// A `WorkspaceStats` value containing totals for files and lines, a language map with
+/// per-language file/line counts, and the number of directories scanned.
 async fn collect_workspace_stats(root: &Path, include_hidden: bool) -> Result<WorkspaceStats> {
     let mut stats = WorkspaceStats {
         total_files: 0,
@@ -85,6 +154,32 @@ async fn collect_workspace_stats(root: &Path, include_hidden: bool) -> Result<Wo
     Ok(stats)
 }
 
+/// Recursively traverses a directory tree and accumulates workspace statistics into the provided `WorkspaceStats`.
+///
+/// This function walks `path` asynchronously, skipping hidden entries unless `include_hidden` is `true`,
+/// and pruning common non-code directories (`node_modules`, `target`, `dist`, `build`, `.git`, `__pycache__`, `venv`).
+/// For each regular file, it maps the file extension to a language (via `extension_to_language`), counts lines for
+/// recognized source files, and updates `stats` in place: incrementing `total_files`, `total_lines`, per-language
+/// `files` and `lines`, and `directories` for visited directories. I/O errors for directories or entries are ignored
+/// (those entries are skipped).
+///
+/// # Parameters
+///
+/// - `path`: root directory to traverse.
+/// - `stats`: mutable accumulator that will be updated with discovered statistics.
+/// - `include_hidden`: when `true`, include files and directories whose names start with `.`.
+///
+/// # Examples
+///
+/// ```
+/// # use std::path::Path;
+/// # use crate::tools::workspace::{collect_stats_recursive, WorkspaceStats};
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let mut stats = WorkspaceStats::default();
+/// collect_stats_recursive(Path::new("."), &mut stats, false).await;
+/// // `stats` now contains aggregated workspace metrics for the current directory.
+/// # });
+/// ```
 fn collect_stats_recursive<'a>(
     path: &'a Path,
     stats: &'a mut WorkspaceStats,
@@ -142,11 +237,47 @@ fn collect_stats_recursive<'a>(
     })
 }
 
+/// Count the number of lines in a UTF-8 text file.
+///
+/// Reads the file at `path` as UTF-8 text and returns the number of newline-separated lines. I/O errors encountered while reading the file are propagated.
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// use std::path::Path;
+/// use std::env::temp_dir;
+/// use std::fs;
+///
+/// // create a temporary file with three lines
+/// let tmp = temp_dir().join("workspace_count_lines_example.txt");
+/// fs::write(&tmp, "line1\nline2\nline3\n")?;
+///
+/// let rt = tokio::runtime::Runtime::new().unwrap();
+/// let count = rt.block_on(async { crate::count_lines(&Path::new(&tmp)) })?;
+/// assert_eq!(count, 3);
+///
+/// fs::remove_file(&tmp)?;
+/// # Ok(()) }
+/// ```
 async fn count_lines(path: &Path) -> Result<usize> {
     let content = fs::read_to_string(path).await?;
     Ok(content.lines().count())
 }
 
+/// Maps a file extension to a human-readable language label.
+///
+/// Returns the language label associated with `ext` (for example, `"rs"` -> `"rust"`).
+/// Unknown or binary extensions return `"binary"`.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(extension_to_language("rs"), "rust");
+/// assert_eq!(extension_to_language("py"), "python");
+/// assert_eq!(extension_to_language("tsx"), "react");
+/// assert_eq!(extension_to_language("unknown_ext"), "binary");
+/// ```
 fn extension_to_language(ext: &str) -> &'static str {
     match ext {
         "rs" => "rust",
@@ -183,6 +314,16 @@ pub struct GitStatusTool {
 }
 
 impl GitStatusTool {
+    /// Create a new WorkspaceStatsTool that uses the given ContextService.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// // `service` should be an initialized `ContextService` from the application.
+    /// let service: Arc<ContextService> = Arc::new(/* ... */);
+    /// let tool = WorkspaceStatsTool::new(service);
+    /// ```
     pub fn new(service: Arc<ContextService>) -> Self {
         Self { service }
     }
@@ -190,6 +331,18 @@ impl GitStatusTool {
 
 #[async_trait]
 impl ToolHandler for GitStatusTool {
+    /// Returns the Tool descriptor for the `git_status` tool.
+    ///
+    /// The descriptor includes the tool name, a short description of its purpose,
+    /// and the JSON input schema (optional `include_diff` boolean).
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Create the tool and get its definition:
+    /// let tool = GitStatusTool::new(service_arc).definition();
+    /// assert_eq!(tool.name, "git_status");
+    /// ```
     fn definition(&self) -> Tool {
         Tool {
             name: "git_status".to_string(),
@@ -207,6 +360,44 @@ impl ToolHandler for GitStatusTool {
         }
     }
 
+    /// Retrieve the workspace git status and optionally include the repository diff.
+    ///
+    /// Parses `git status --porcelain` in the workspace directory and categorizes files into
+    /// `staged`, `unstaged`, and `untracked`. If `include_diff` is true in `args`, also captures
+    /// the output of `git diff` and places it in the `diff` field.
+    ///
+    /// The `args` map may include:
+    /// - `"include_diff"`: boolean (optional, defaults to `false`) — when `true`, the tool will try to
+    ///   include the output of `git diff` in the returned result.
+    ///
+    /// # Returns
+    ///
+    /// Ok containing a `ToolResult` whose success payload is a pretty-printed JSON representation of
+    /// the `GitStatus` structure:
+    /// - `staged`: list of file paths with staged changes
+    /// - `unstaged`: list of file paths with unstaged changes
+    /// - `untracked`: list of untracked file paths
+    /// - `diff`: optional diff string when requested and available
+    ///
+    /// If the git commands fail (for example, the workspace is not a git repository), the function
+    /// returns an error `ToolResult`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Example illustrating the JSON shape produced by the tool.
+    /// use serde_json::json;
+    ///
+    /// let example = json!({
+    ///     "staged": ["src/lib.rs"],
+    ///     "unstaged": ["README.md"],
+    ///     "untracked": ["tmp/new_file.txt"],
+    ///     "diff": null
+    /// });
+    ///
+    /// let pretty = serde_json::to_string_pretty(&example).unwrap();
+    /// assert!(pretty.contains("\"staged\""));
+    /// ```
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let include_diff = args
             .get("include_diff")
@@ -293,6 +484,16 @@ pub struct ExtractSymbolsTool {
 }
 
 impl ExtractSymbolsTool {
+    /// Create a new WorkspaceStatsTool that uses the given ContextService.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// // `service` should be an initialized `ContextService` from the application.
+    /// let service: Arc<ContextService> = Arc::new(/* ... */);
+    /// let tool = WorkspaceStatsTool::new(service);
+    /// ```
     pub fn new(service: Arc<ContextService>) -> Self {
         Self { service }
     }
@@ -300,6 +501,21 @@ impl ExtractSymbolsTool {
 
 #[async_trait]
 impl ToolHandler for ExtractSymbolsTool {
+    /// Returns the tool descriptor for the extract_symbols tool.
+    ///
+    /// The descriptor includes the tool's name, a short description of its behavior,
+    /// and the JSON input schema (requiring `file_path`) used to invoke the tool.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// // Construct a ContextService appropriately in your application.
+    /// let service = Arc::new(ContextService::new());
+    /// let tool = ExtractSymbolsTool::new(service).definition();
+    /// assert_eq!(tool.name, "extract_symbols");
+    /// assert!(tool.input_schema.get("required").and_then(|r| r.as_array()).is_some());
+    /// ```
     fn definition(&self) -> Tool {
         Tool {
             name: "extract_symbols".to_string(),
@@ -317,6 +533,32 @@ impl ToolHandler for ExtractSymbolsTool {
         }
     }
 
+    /// Extracts symbols from a file inside the workspace and returns them as a JSON-formatted ToolResult.
+    ///
+    /// The method expects `args` to contain a `"file_path"` key with a path relative to the workspace root.
+    /// It verifies the resolved path does not escape the workspace, reads the file, detects symbols based on the
+    /// file extension, and returns a pretty-printed JSON object with the keys:
+    /// - `file`: the supplied relative file path
+    /// - `symbols`: an array of detected `Symbol` objects (name, kind, line, optional signature)
+    ///
+    /// # Parameters
+    ///
+    /// - `args`: A map of input arguments; must include `"file_path"` (string) pointing to a file within the workspace.
+    ///
+    /// # Returns
+    ///
+    /// A `ToolResult` containing a pretty-printed JSON object with the `file` and `symbols` fields. On failure the
+    /// returned `ToolResult` contains an error message describing the problem (e.g., path resolution or read error).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Given file content, `extract_symbols_from_content` demonstrates the expected symbol extraction.
+    /// let content = "pub struct Foo {}\n\npub fn bar() {}";
+    /// let symbols = extract_symbols_from_content(content, "rs");
+    /// assert!(symbols.iter().any(|s| s.kind == "struct" && s.name == "Foo"));
+    /// assert!(symbols.iter().any(|s| s.kind == "function" && s.name == "bar"));
+    /// ```
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let file_path = get_string_arg(&args, "file_path")?;
 
@@ -366,6 +608,23 @@ struct Symbol {
     signature: Option<String>,
 }
 
+/// Extracts symbol definitions from the given source text for the specified file extension.
+///
+/// Scans the content line-by-line and returns a vector of detected `Symbol` entries
+/// (each with name, kind, line number, and optional signature) appropriate for the
+/// language indicated by `ext`.
+///
+/// # Examples
+///
+/// ```
+/// let src = "pub struct Foo {}\nfn bar() {}\n";
+/// let syms = extract_symbols_from_content(src, "rs");
+/// assert_eq!(syms.len(), 2);
+/// assert_eq!(syms[0].name, "Foo");
+/// assert_eq!(syms[0].kind, "struct");
+/// assert_eq!(syms[1].name, "bar");
+/// assert_eq!(syms[1].kind, "function");
+/// ```
 fn extract_symbols_from_content(content: &str, ext: &str) -> Vec<Symbol> {
     let mut symbols = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
@@ -380,6 +639,21 @@ fn extract_symbols_from_content(content: &str, ext: &str) -> Vec<Symbol> {
     symbols
 }
 
+/// Dispatches a single source line to the language-specific symbol detector based on the file extension.
+///
+/// Supported extensions: "rs" (Rust), "py" (Python), "ts", "tsx", "js", "jsx" (TypeScript/JavaScript), and "go" (Go).
+///
+/// # Returns
+///
+/// `Some(Symbol)` if the line contains a recognized symbol for the given language, `None` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// let line = "pub fn hello(name: &str) -> String {";
+/// let sym = detect_symbol(line, "rs", 1);
+/// assert!(sym.is_some());
+/// ```
 fn detect_symbol(line: &str, ext: &str, line_num: usize) -> Option<Symbol> {
     match ext {
         "rs" => detect_rust_symbol(line, line_num),
@@ -390,6 +664,23 @@ fn detect_symbol(line: &str, ext: &str, line_num: usize) -> Option<Symbol> {
     }
 }
 
+/// Detects a top-level Rust symbol declared on a single source line.
+///
+/// Recognizes `function`, `struct`, `enum`, `trait`, and `impl` declarations. When a symbol is found,
+/// returns a `Symbol` with its `name`, `kind`, `line`, and an optional `signature` (present for functions and impls).
+///
+/// # Examples
+///
+/// ```
+/// let s = detect_rust_symbol("pub fn add(a: i32, b: i32) -> i32 {", 3).unwrap();
+/// assert_eq!(s.name, "add");
+/// assert_eq!(s.kind, "function");
+/// assert_eq!(s.line, 3);
+///
+/// let st = detect_rust_symbol("struct Point {", 10).unwrap();
+/// assert_eq!(st.name, "Point");
+/// assert_eq!(st.kind, "struct");
+/// ```
 fn detect_rust_symbol(line: &str, line_num: usize) -> Option<Symbol> {
     if line.starts_with("pub fn ") || line.starts_with("fn ") {
         let name = extract_name(line, "fn ");
@@ -453,6 +744,31 @@ fn detect_rust_symbol(line: &str, line_num: usize) -> Option<Symbol> {
     None
 }
 
+/// Detects a top-level Python symbol declaration on a single line.
+///
+/// Analyzes the provided line for `def`, `async def`, or `class` declarations and,
+/// when found, returns a `Symbol` containing the identifier name, kind, source line
+/// number, and an optional signature (the full line) for functions.
+///
+/// # Parameters
+///
+/// - `line`: the source line to inspect.
+/// - `line_num`: the 1-based line number to record in the returned `Symbol`.
+///
+/// # Returns
+///
+/// `Some(Symbol)` when the line declares a Python function, async function, or class;
+/// `None` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// let s = detect_python_symbol("def foo(bar):", 1).unwrap();
+/// assert_eq!(s.name, "foo");
+/// assert_eq!(s.kind, "function");
+/// assert_eq!(s.line, 1);
+/// assert_eq!(s.signature.unwrap(), "def foo(bar):".to_string());
+/// ```
 fn detect_python_symbol(line: &str, line_num: usize) -> Option<Symbol> {
     if line.starts_with("def ") {
         let name = extract_name(line, "def ");
@@ -484,6 +800,25 @@ fn detect_python_symbol(line: &str, line_num: usize) -> Option<Symbol> {
     None
 }
 
+/// Detects a TypeScript/JavaScript symbol declaration on a single source line.
+///
+/// The function recognizes `function`, `class`, `interface`, and `type` declarations
+/// (including `export` variants) and returns the corresponding symbol metadata.
+///
+/// # Returns
+///
+/// `Some(Symbol)` containing the detected symbol's name, kind, line number, and an
+/// optional signature (present for `function`), or `None` if no supported declaration is found.
+///
+/// # Examples
+///
+/// ```
+/// let line = "export class MyComponent {";
+/// let sym = detect_ts_symbol(line, 10).unwrap();
+/// assert_eq!(sym.name, "MyComponent");
+/// assert_eq!(sym.kind, "class");
+/// assert_eq!(sym.line, 10);
+/// ```
 fn detect_ts_symbol(line: &str, line_num: usize) -> Option<Symbol> {
     // Function declarations
     if line.contains("function ") {
@@ -545,6 +880,44 @@ fn detect_ts_symbol(line: &str, line_num: usize) -> Option<Symbol> {
     None
 }
 
+/// Detects top-level Go symbols on a single source line.
+///
+/// Recognizes function declarations (including methods), `type ... struct` and `type ... interface`
+/// declarations and returns a corresponding `Symbol`.
+///
+/// # Parameters
+///
+/// - `line`: the source code line to analyze.
+/// - `line_num`: the 1-based line number where `line` appears.
+///
+/// # Returns
+///
+/// `Some(Symbol)` when a Go symbol is found, `None` otherwise.
+///
+/// # Examples
+///
+/// ```
+/// let line_fn = "func Add(a int, b int) int {";
+/// let sym = detect_go_symbol(line_fn, 10).unwrap();
+/// assert_eq!(sym.name, "Add");
+/// assert_eq!(sym.kind, "function");
+/// assert_eq!(sym.line, 10);
+///
+/// let line_method = "func (r *Repo) Save(item Item) error {";
+/// let sym = detect_go_symbol(line_method, 20).unwrap();
+/// assert_eq!(sym.name, "Save");
+/// assert_eq!(sym.kind, "function");
+///
+/// let line_struct = "type User struct {";
+/// let sym = detect_go_symbol(line_struct, 30).unwrap();
+/// assert_eq!(sym.name, "User");
+/// assert_eq!(sym.kind, "struct");
+///
+/// let line_iface = "type Reader interface {";
+/// let sym = detect_go_symbol(line_iface, 40).unwrap();
+/// assert_eq!(sym.name, "Reader");
+/// assert_eq!(sym.kind, "interface");
+/// ```
 fn detect_go_symbol(line: &str, line_num: usize) -> Option<Symbol> {
     if line.starts_with("func ") {
         let rest = line.strip_prefix("func ").unwrap_or(line);
@@ -587,6 +960,31 @@ fn detect_go_symbol(line: &str, line_num: usize) -> Option<Symbol> {
     None
 }
 
+/// Extracts the identifier immediately following a given prefix in a line.
+
+///
+
+/// The function finds the first occurrence of `prefix` in `line` and returns the contiguous
+
+/// sequence of ASCII letters, digits, or underscores that follows it. If the prefix is not
+
+/// present or no valid identifier follows, an empty string is returned.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// assert_eq!(extract_name("pub fn hello_world()", "fn "), "hello_world");
+
+/// assert_eq!(extract_name("impl<T> MyType<T> {", "impl "), "MyType");
+
+/// assert_eq!(extract_name("let x = 1;", "const "), "");
+
+/// ```
 fn extract_name(line: &str, prefix: &str) -> String {
     line.split(prefix)
         .nth(1)

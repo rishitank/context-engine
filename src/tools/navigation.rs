@@ -19,6 +19,18 @@ pub struct FindReferencesTool {
 }
 
 impl FindReferencesTool {
+    /// Creates a new instance of the tool that shares the provided context service.
+    ///
+    /// The `service` is held by the tool and used to access workspace state and perform
+    /// file search, definition lookup, or diff operations depending on the tool.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// let service = Arc::new(ContextService::new());
+    /// let tool = FindReferencesTool::new(service.clone());
+    /// ```
     pub fn new(service: Arc<ContextService>) -> Self {
         Self { service }
     }
@@ -26,6 +38,23 @@ impl FindReferencesTool {
 
 #[async_trait]
 impl ToolHandler for FindReferencesTool {
+    /// Returns the tool descriptor for the "find_references" tool, describing its name,
+    /// purpose, and expected input schema.
+    ///
+    /// The returned Tool has:
+    /// - name: "find_references"
+    /// - description: brief explanation of the tool's purpose (searches for symbol usages)
+    /// - input_schema: JSON schema requiring `symbol` and optionally accepting `file_pattern`
+    ///   and `max_results` (default: 50).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Construct the tool descriptor and verify its name.
+    /// let svc = Arc::new(ContextService::new()); // pseudo-code: supply a real service in use
+    /// let tool = FindReferencesTool::new(svc).definition();
+    /// assert_eq!(tool.name, "find_references");
+    /// ```
     fn definition(&self) -> Tool {
         Tool {
             name: "find_references".to_string(),
@@ -51,6 +80,27 @@ impl ToolHandler for FindReferencesTool {
         }
     }
 
+    /// Finds occurrences of a symbol across the workspace and returns a Markdown-formatted summary of matches.
+    ///
+    /// If any references are found, the result contains a Markdown document with a header and a bullet list
+    /// of file paths, line numbers, and line context for each occurrence. If no references are found, the
+    /// result contains a success message stating that no references were discovered for the requested symbol.
+    ///
+    /// # Returns
+    ///
+    /// A `ToolResult` containing either the Markdown list of references or a success message indicating no references.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use serde_json::json;
+    /// # use futures::executor::block_on;
+    /// # // assuming `tool` is an instance of the tool in a test setup
+    /// let mut args = HashMap::new();
+    /// args.insert("symbol".to_string(), json!("my_symbol"));
+    /// // block_on(tool.execute(args)) // -> ToolResult with Markdown or "No references found..."
+    /// ```
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let symbol = get_string_arg(&args, "symbol")?;
         let file_pattern = args.get("file_pattern").and_then(|v| v.as_str());
@@ -94,6 +144,18 @@ pub struct GoToDefinitionTool {
 }
 
 impl GoToDefinitionTool {
+    /// Creates a new instance of the tool that shares the provided context service.
+    ///
+    /// The `service` is held by the tool and used to access workspace state and perform
+    /// file search, definition lookup, or diff operations depending on the tool.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// let service = Arc::new(ContextService::new());
+    /// let tool = FindReferencesTool::new(service.clone());
+    /// ```
     pub fn new(service: Arc<ContextService>) -> Self {
         Self { service }
     }
@@ -101,6 +163,18 @@ impl GoToDefinitionTool {
 
 #[async_trait]
 impl ToolHandler for GoToDefinitionTool {
+    /// Creates a Tool descriptor for the "go_to_definition" tool used to locate a symbol's definition.
+    ///
+    /// The returned `Tool` includes the tool name, a brief description, and an input JSON schema
+    /// that requires a `symbol` and optionally accepts a `language` hint (e.g., "rust", "python").
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Obtain the descriptor from a GoToDefinitionTool instance:
+    /// let tool = GoToDefinitionTool::new(std::sync::Arc::new(context_service)).definition();
+    /// assert_eq!(tool.name, "go_to_definition");
+    /// ```
     fn definition(&self) -> Tool {
         Tool {
             name: "go_to_definition".to_string(),
@@ -122,6 +196,31 @@ impl ToolHandler for GoToDefinitionTool {
         }
     }
 
+    /// Finds definitions for the provided symbol in the workspace and returns a Markdown document
+    /// describing each match with file path, line number, and a fenced code snippet tagged with the detected language.
+    ///
+    /// The `args` map must contain the key `"symbol"` with the symbol name to search for. It may also
+    /// include an optional `"language"` string to hint which language to prefer when locating definitions.
+    ///
+    /// # Returns
+    ///
+    /// A `ToolResult` containing a Markdown-formatted document listing each definition found. If no
+    /// definitions are found, the result contains a plain message stating that no definition was found.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::collections::HashMap;
+    /// use serde_json::json;
+    ///
+    /// // `tool` is assumed to be an instance implementing this `execute` method.
+    /// let mut args = HashMap::new();
+    /// args.insert("symbol".to_string(), json!("my_function"));
+    /// // Optionally: args.insert("language".to_string(), json!("rust"));
+    ///
+    /// // let result = tool.execute(args).await.unwrap();
+    /// // println!("{}", result);
+    /// ```
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let symbol = get_string_arg(&args, "symbol")?;
         let language = args.get("language").and_then(|v| v.as_str());
@@ -154,6 +253,18 @@ pub struct DiffFilesTool {
 }
 
 impl DiffFilesTool {
+    /// Creates a new instance of the tool that shares the provided context service.
+    ///
+    /// The `service` is held by the tool and used to access workspace state and perform
+    /// file search, definition lookup, or diff operations depending on the tool.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// let service = Arc::new(ContextService::new());
+    /// let tool = FindReferencesTool::new(service.clone());
+    /// ```
     pub fn new(service: Arc<ContextService>) -> Self {
         Self { service }
     }
@@ -161,6 +272,14 @@ impl DiffFilesTool {
 
 #[async_trait]
 impl ToolHandler for DiffFilesTool {
+    /// Provides the Tool descriptor for the "diff_files" tool which compares two files and produces a unified diff.
+    ///
+    /// The descriptor includes the tool name, a short description, and an input JSON schema that requires `file1` and `file2`
+    /// and accepts an optional `context_lines` integer to control the number of surrounding context lines (default: 3).
+    ///
+    /// # Returns
+    ///
+    /// A `Tool` value describing the "diff_files" tool, its description, and its input schema.
     fn definition(&self) -> Tool {
         Tool {
             name: "diff_files".to_string(),
@@ -188,6 +307,26 @@ impl ToolHandler for DiffFilesTool {
         }
     }
 
+    /// Compute a unified-style diff for two files in the workspace and return it as a tool result.
+    ///
+    /// If both files are readable and identical, the result contains the message "Files are identical.".
+    /// If they differ, the result contains a markdown-formatted diff wrapped in ```diff fences.
+    /// If either file cannot be read, the result is an error ToolResult describing the read failure.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use std::collections::HashMap;
+    /// # use serde_json::json;
+    /// # async fn example(tool: &crate::tools::navigation::DiffFilesTool) {
+    /// let mut args = HashMap::new();
+    /// args.insert("file1".to_string(), json!("Cargo.toml"));
+    /// args.insert("file2".to_string(), json!("Cargo.lock"));
+    /// // optional: args.insert("context_lines".to_string(), json!(5));
+    /// let result = tool.execute(args).await.unwrap();
+    /// // Inspect `result` to see the diff or an error message.
+    /// # }
+    /// ```
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let file1 = get_string_arg(&args, "file1")?;
         let file2 = get_string_arg(&args, "file2")?;
@@ -235,7 +374,30 @@ struct Definition {
     language: String,
 }
 
-/// Find symbol references in files.
+/// Search the workspace for occurrences of a symbol and collect matching references.
+///
+/// Searches files under `workspace`, optionally filtering files by `file_pattern`,
+/// and returns up to `max_results` matches as `Reference` entries containing the
+/// relative file path, 1-based line number, and the matching line as context.
+///
+/// # Parameters
+///
+/// - `file_pattern`: optional pattern to restrict searched files (supports suffix like `"*.rs"` or substring matching).
+/// - `max_results`: maximum number of references to return; search stops once this limit is reached.
+///
+/// # Returns
+///
+/// A `Vec<Reference>` containing one entry per found occurrence, in discovery order.
+///
+/// # Examples
+///
+/// ```
+/// # use std::path::Path;
+/// # use tokio_test::block_on;
+/// // Search the current directory for the string "main", returning at most 5 matches.
+/// let refs = block_on(async { crate::tools::navigation::find_symbol_in_files(Path::new("."), "main", None, 5).await });
+/// assert!(refs.len() <= 5);
+/// ```
 async fn find_symbol_in_files(
     workspace: &Path,
     symbol: &str,
@@ -314,7 +476,22 @@ async fn find_symbol_in_files(
     references
 }
 
-/// Find symbol definition.
+/// Searches the workspace for likely definitions of `symbol` and returns any matches found.
+///
+/// If `language` is provided, the search is limited to files whose detected language matches the hint
+/// (for example `"rust"`, `"python"`, `"typescript"`). Each returned `Definition` contains the
+/// relative file path, a 1-based line number, a short context snippet (up to a few lines), and the
+/// detected language for the file.
+///
+/// # Examples
+///
+/// ```
+/// use std::path::Path;
+/// // Run the async function in a simple executor for the example.
+/// let defs = futures::executor::block_on(find_definition(Path::new("path/to/workspace"), "my_symbol", None));
+/// // `defs` is a Vec<Definition>; check if any definitions were found.
+/// assert!(defs.is_empty() || defs.iter().all(|d| d.context.len() > 0));
+/// ```
 async fn find_definition(
     workspace: &Path,
     symbol: &str,
@@ -392,7 +569,35 @@ async fn find_definition(
     definitions
 }
 
-/// Get definition patterns for a symbol.
+/// Build a list of textual patterns commonly used to identify symbol definitions.
+
+///
+
+/// The `symbol` is inserted into language-specific declaration snippets. The optional
+
+/// `language` hint restricts patterns to that language when possible; otherwise a generic
+
+/// set of patterns for several common languages is returned.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// let pats = get_definition_patterns("my_fn", Some("rust"));
+
+/// assert!(pats.iter().any(|p| p == "fn my_fn("));
+
+///
+
+/// let generic = get_definition_patterns("Thing", None);
+
+/// assert!(generic.iter().any(|p| p.contains("class Thing") || p.contains("struct Thing")));
+
+/// ```
 fn get_definition_patterns(symbol: &str, language: Option<&str>) -> Vec<String> {
     let mut patterns = Vec::new();
 
@@ -434,7 +639,17 @@ fn get_definition_patterns(symbol: &str, language: Option<&str>) -> Vec<String> 
     patterns
 }
 
-/// Get language from file extension.
+/// Map a file extension to a canonical language identifier.
+///
+/// Recognizes common source file extensions and returns a short language name; unknown extensions return `"text"`.
+///
+/// # Examples
+///
+/// ```
+/// assert_eq!(get_language("rs"), "rust");
+/// assert_eq!(get_language("tsx"), "typescript");
+/// assert_eq!(get_language("unknown"), "text");
+/// ```
 fn get_language(ext: &str) -> &'static str {
     match ext {
         "rs" => "rust",
@@ -450,7 +665,18 @@ fn get_language(ext: &str) -> &'static str {
     }
 }
 
-/// Simple pattern matching.
+/// Checks whether a filename matches a simple pattern.
+///
+/// Patterns starting with `"*."` are treated as extension matches (e.g., `"*.rs"`
+/// matches `"foo.rs"`). All other patterns are matched by substring containment.
+///
+/// # Examples
+///
+/// ```
+/// assert!(matches_pattern("src/lib.rs", "*.rs"));
+/// assert!(matches_pattern("README.md", "README"));
+/// assert!(!matches_pattern("src/main.c", "*.rs"));
+/// ```
 fn matches_pattern(name: &str, pattern: &str) -> bool {
     if let Some(ext) = pattern.strip_prefix("*.") {
         name.ends_with(&format!(".{}", ext))
@@ -459,7 +685,25 @@ fn matches_pattern(name: &str, pattern: &str) -> bool {
     }
 }
 
-/// Generate a simple unified diff.
+/// Produces a unified-diff-like string describing differences between two file contents.
+///
+/// The output starts with unified diff headers for `name1` and `name2` and contains one or more
+/// hunks with context lines, removals marked with `-` and additions with `+`. If the contents
+/// are identical, an empty string is returned.
+///
+/// `context` controls how many unchanged lines around a change are included in each hunk.
+///
+/// # Examples
+///
+/// ```
+/// let a = "a\nb\nc\n";
+/// let b = "a\nB\nc\n";
+/// let diff = generate_diff("old.txt", "new.txt", a, b, 1);
+/// assert!(diff.contains("--- old.txt"));
+/// assert!(diff.contains("+++ new.txt"));
+/// assert!(diff.contains("-b"));
+/// assert!(diff.contains("+B"));
+/// ```
 fn generate_diff(
     name1: &str,
     name2: &str,
