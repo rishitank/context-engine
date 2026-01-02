@@ -34,7 +34,23 @@ pub struct ProgressNotification {
 }
 
 impl ProgressNotification {
-    /// Create a new progress notification.
+    /// Constructs a JSON-RPC progress notification containing the provided token, progress value, optional total, and optional message.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let note = ProgressNotification::new(
+    ///     ProgressToken::String("op-1".into()),
+    ///     50,
+    ///     Some(100),
+    ///     Some("in progress".into()),
+    /// );
+    /// assert_eq!(note.jsonrpc, "2.0");
+    /// assert_eq!(note.method, "notifications/progress");
+    /// assert_eq!(note.params.progress, 50);
+    /// assert_eq!(note.params.total, Some(100));
+    /// assert_eq!(note.params.message.as_deref(), Some("in progress"));
+    /// ```
     pub fn new(
         token: ProgressToken,
         progress: u64,
@@ -63,7 +79,17 @@ pub struct ProgressReporter {
 }
 
 impl ProgressReporter {
-    /// Create a new progress reporter.
+    /// Constructs a ProgressReporter bound to a progress token, a sender channel, and an optional total.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tokio::sync::mpsc;
+    /// use crate::mcp::progress::{ProgressReporter, ProgressToken};
+    ///
+    /// let (tx, _rx) = mpsc::channel(1);
+    /// let reporter = ProgressReporter::new(ProgressToken::Number(1), tx, Some(100));
+    /// ```
     pub fn new(
         token: ProgressToken,
         sender: mpsc::Sender<ProgressNotification>,
@@ -76,7 +102,21 @@ impl ProgressReporter {
         }
     }
 
-    /// Report progress.
+    /// Send a progress notification for this reporter.
+    ///
+    /// The optional `message`, if provided, is included in the notification. Send failures are ignored.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use futures::executor::block_on;
+    /// # use crate::mcp::progress::{ProgressManager, ProgressToken};
+    /// let manager = ProgressManager::new();
+    /// let reporter = manager.create_reporter(Some(100));
+    /// block_on(async {
+    ///     reporter.report(42, Some("halfway")).await;
+    /// });
+    /// ```
     pub async fn report(&self, progress: u64, message: Option<&str>) {
         let notification = ProgressNotification::new(
             self.token.clone(),
@@ -87,7 +127,20 @@ impl ProgressReporter {
         let _ = self.sender.send(notification).await;
     }
 
-    /// Report progress with percentage.
+    /// Converts a percentage into an absolute progress value (using the reporter's `total` when present) and emits that progress notification.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tokio::sync::mpsc;
+    /// # use crate::mcp::progress::{ProgressManager};
+    /// # #[tokio::test]
+    /// # async fn example_report_percent() {
+    /// let manager = ProgressManager::new();
+    /// let reporter = manager.create_reporter(Some(200));
+    /// reporter.report_percent(50, Some("Halfway")).await;
+    /// # }
+    /// ```
     pub async fn report_percent(&self, percent: u64, message: Option<&str>) {
         let progress = if let Some(total) = self.total {
             (percent * total) / 100
@@ -97,7 +150,26 @@ impl ProgressReporter {
         self.report(progress, message).await;
     }
 
-    /// Complete the progress.
+    /// Report completion for this reporter by sending a notification with progress set to the reporter's total, if one is configured.
+    ///
+    /// If the reporter has no configured total, no notification is sent.
+    ///
+    /// # Parameters
+    ///
+    /// - `message`: Optional message to include with the completion notification.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tokio::sync::mpsc;
+    /// use crate::mcp::progress::{ProgressReporter, ProgressToken};
+    ///
+    /// // Create a reporter with a total of 100 and send completion.
+    /// let rt = tokio::runtime::Runtime::new().unwrap();
+    /// let (tx, _rx) = mpsc::channel(10);
+    /// let reporter = ProgressReporter::new(ProgressToken::Number(1), tx, Some(100));
+    /// rt.block_on(reporter.complete(Some("finished")));
+    /// ```
     pub async fn complete(&self, message: Option<&str>) {
         if let Some(total) = self.total {
             self.report(total, message).await;
@@ -113,7 +185,15 @@ pub struct ProgressManager {
 }
 
 impl ProgressManager {
-    /// Create a new progress manager.
+    /// Creates a new ProgressManager configured to emit progress notifications.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mgr = ProgressManager::new();
+    /// // obtain a receiver to consume notifications
+    /// let _recv = mgr.receiver();
+    /// ```
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::channel(100);
         Self {
@@ -123,7 +203,26 @@ impl ProgressManager {
         }
     }
 
-    /// Create a new progress reporter with a generated token.
+    /// Creates a new ProgressReporter that uses a generated numeric token.
+    ///
+    /// The generated token is a sequential numeric identifier unique to this ProgressManager instance.
+    ///
+    /// # Parameters
+    ///
+    /// - `total`: Optional total number of work units for the operation; if provided, percentage-based reporting
+    ///   will be computed against this value.
+    ///
+    /// # Returns
+    ///
+    /// A `ProgressReporter` bound to this manager's sender, using a newly generated numeric `ProgressToken`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let manager = ProgressManager::new();
+    /// let reporter = manager.create_reporter(Some(100));
+    /// // `reporter` can now be used to emit progress updates.
+    /// ```
     pub fn create_reporter(&self, total: Option<u64>) -> ProgressReporter {
         let id = self
             .next_id
@@ -132,7 +231,19 @@ impl ProgressManager {
         ProgressReporter::new(token, self.sender.clone(), total)
     }
 
-    /// Create a progress reporter with a specific token.
+    /// Creates a ProgressReporter bound to the given token and optional total.
+    ///
+    /// The returned reporter will send progress notifications tagged with `token`
+    /// using the manager's internal channel.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::mcp::progress::{ProgressManager, ProgressToken};
+    ///
+    /// let manager = ProgressManager::new();
+    /// let reporter = manager.create_reporter_with_token(ProgressToken::String("op".into()), Some(100));
+    /// ```
     pub fn create_reporter_with_token(
         &self,
         token: ProgressToken,
@@ -141,13 +252,39 @@ impl ProgressManager {
         ProgressReporter::new(token, self.sender.clone(), total)
     }
 
-    /// Get the receiver for progress notifications.
+    /// Returns a clone of the shared receiver handle for progress notifications.
+    ///
+    /// The returned `Arc<tokio::sync::Mutex<mpsc::Receiver<ProgressNotification>>>` can be cloned and used by consumers to lock and receive progress notifications.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let manager = ProgressManager::new();
+    /// let rx = manager.receiver();
+    /// // `rx` is a clone of the manager's shared receiver handle
+    /// assert!(Arc::strong_count(&rx) >= 1);
+    /// ```
     pub fn receiver(&self) -> Arc<tokio::sync::Mutex<mpsc::Receiver<ProgressNotification>>> {
         self.receiver.clone()
     }
 }
 
 impl Default for ProgressManager {
+    /// Creates a ProgressManager initialized with its standard channel and token counter.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// let mgr = crate::mcp::progress::ProgressManager::default();
+    
+    /// let _recv = mgr.receiver();
+    
+    /// ```
     fn default() -> Self {
         Self::new()
     }

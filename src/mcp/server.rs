@@ -31,6 +31,20 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
+    /// Converts a case-insensitive string into the corresponding `LogLevel`, defaulting to `Info` for unknown values.
+    ///
+    /// # Returns
+    /// The matching `LogLevel` variant; `Info` if the input is not recognized.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::mcp::server::LogLevel;
+    ///
+    /// assert_eq!(LogLevel::from_str("debug"), LogLevel::Debug);
+    /// assert_eq!(LogLevel::from_str("Warn"), LogLevel::Warning);
+    /// assert_eq!(LogLevel::from_str("unknown-level"), LogLevel::Info);
+    /// ```
     fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "debug" => Self::Debug,
@@ -45,6 +59,17 @@ impl LogLevel {
         }
     }
 
+    /// Get the lowercase string name for the log level.
+    ///
+    /// The returned string is a static, lowercase identifier corresponding to the variant
+    /// (for example, `"info"`, `"warning"`, or `"error"`).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let lvl = LogLevel::Info;
+    /// assert_eq!(lvl.as_str(), "info");
+    /// ```
     fn as_str(&self) -> &'static str {
         match self {
             Self::Debug => "debug",
@@ -77,7 +102,18 @@ pub struct McpServer {
 }
 
 impl McpServer {
-    /// Create a new MCP server.
+    /// Creates a new MCP server with default features.
+    ///
+    /// The returned server uses an empty prompt registry, no resource registry (resources disabled),
+    /// empty workspace roots, no active or cancelled requests, and the default log level and version.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // create a handler appropriate for your setup
+    /// let handler = /* create or obtain an McpHandler instance */ ;
+    /// let _server = McpServer::new(handler, "my-server");
+    /// ```
     pub fn new(handler: McpHandler, name: impl Into<String>) -> Self {
         Self {
             handler: Arc::new(handler),
@@ -92,7 +128,20 @@ impl McpServer {
         }
     }
 
-    /// Create a new MCP server with all features.
+    /// Create a McpServer configured with prompts and an initialized resources registry.
+    ///
+    /// The returned server wraps the provided handler and prompt registry in Arcs,
+    /// constructs a ResourceRegistry from `context_service`, and initializes
+    /// empty workspace roots, active/cancelled request tracking, and the default log level.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use std::sync::Arc;
+    ///
+    /// // Assume `handler`, `prompts`, and `context_service` are available.
+    /// let server = McpServer::with_features(handler, prompts, Arc::new(context_service), "my-server");
+    /// ```
     pub fn with_features(
         handler: McpHandler,
         prompts: PromptRegistry,
@@ -112,38 +161,124 @@ impl McpServer {
         }
     }
 
-    /// Get the current log level.
+    /// Retrieve the server's current log level.
+    ///
+    /// # Returns
+    ///
+    /// `LogLevel` containing the server's active log level.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use futures::executor::block_on;
+    /// # // `server` must be a `McpServer` instance
+    /// # let server = todo!();
+    /// let level = block_on(server.log_level());
+    /// ```
     pub async fn log_level(&self) -> LogLevel {
         *self.log_level.read().await
     }
 
-    /// Set the log level.
+    /// Update the server's current logging level.
+    ///
+    /// This changes the level that the server uses for subsequent log messages.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use crate::mcp::server::{McpServer, LogLevel};
+    /// # async fn doc_example(server: &McpServer) {
+    /// server.set_log_level(LogLevel::Debug).await;
+    /// # }
+    /// ```
     pub async fn set_log_level(&self, level: LogLevel) {
         *self.log_level.write().await = level;
     }
 
-    /// Get the client-provided workspace roots.
+    /// Retrieve the client-provided workspace roots.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Obtain an McpServer instance from your application context.
+    /// let server: McpServer = unimplemented!();
+    ///
+    /// // Call the async method to get the current roots.
+    /// let roots = futures::executor::block_on(server.roots());
+    /// assert!(roots.iter().all(|p| p.is_absolute()));
+    /// ```
     pub async fn roots(&self) -> Vec<PathBuf> {
         self.roots.read().await.clone()
     }
 
-    /// Check if a request has been explicitly cancelled.
+    /// Returns whether the given request ID has been explicitly cancelled.
+    
+    ///
+    
+    /// # Examples
+    
+    ///
+    
+    /// ```
+    
+    /// // Assuming `server: McpServer` and `id: RequestId` are available:
+    
+    /// // let cancelled = server.is_cancelled(&id).await;
+    
+    /// ```
     pub async fn is_cancelled(&self, id: &RequestId) -> bool {
         self.cancelled_requests.read().await.contains(id)
     }
 
-    /// Mark a request as cancelled.
+    /// Marks the given request ID as cancelled so the server will treat it as cancelled on subsequent checks.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assuming `server` is an instance of `McpServer` and `req_id` is a `RequestId`:
+    /// // server.cancel_request(&req_id).await;
+    /// ```
     pub async fn cancel_request(&self, id: &RequestId) {
         self.cancelled_requests.write().await.insert(id.clone());
     }
 
-    /// Clean up a completed request from tracking sets.
+    /// Remove a request from the server's active and cancelled tracking sets.
+    ///
+    /// This removes `id` from both `active_requests` and `cancelled_requests`, ensuring
+    /// the server no longer treats the request as in-progress or cancelled.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use mcp::server::McpServer;
+    /// # use mcp::RequestId;
+    /// # async fn example(server: &McpServer, id: &RequestId) {
+    /// server.complete_request(id).await;
+    /// # }
+    /// ```
     pub async fn complete_request(&self, id: &RequestId) {
         self.active_requests.write().await.remove(id);
         self.cancelled_requests.write().await.remove(id);
     }
 
-    /// Run the server with the given transport.
+    /// Run the server loop that processes incoming MCP messages on the provided transport.
+    ///
+    /// Starts the transport, receives messages until the transport ends or a send failure occurs,
+    /// dispatches requests and notifications to the server handlers, stops the transport, and returns
+    /// when the server has shut down.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on normal shutdown; an `Err` is returned if starting or stopping the transport fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # async fn _example(server: Arc<crate::mcp::server::McpServer>, transport: impl crate::transport::Transport) {
+    /// server.run(transport).await.unwrap();
+    /// # }
+    /// ```
     pub async fn run<T: Transport>(&self, mut transport: T) -> Result<()> {
         info!("Starting MCP server: {} v{}", self.name, self.version);
 
@@ -172,7 +307,21 @@ impl McpServer {
         Ok(())
     }
 
-    /// Handle a JSON-RPC request.
+    /// Dispatches an incoming JSON-RPC request to the appropriate handler, tracks the request lifecycle for cancellation, and returns the corresponding JSON-RPC response.
+    ///
+    /// The request is registered as active while being processed; upon completion it is removed from active tracking. Known MCP methods are routed to their specific handlers; unknown methods produce a protocol error encoded in the response.
+    ///
+    /// # Returns
+    ///
+    /// `JsonRpcResponse` containing either a successful `result` value or an `error` describing the failure.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // `server` and `request` are assumed to be initialized appropriately.
+    /// let resp = futures::executor::block_on(server.handle_request(request));
+    /// assert_eq!(resp.jsonrpc, "2.0");
+    /// ```
     async fn handle_request(&self, req: JsonRpcRequest) -> JsonRpcResponse {
         debug!("Handling request: {} (id: {:?})", req.method, req.id);
 
@@ -228,7 +377,29 @@ impl McpServer {
         }
     }
 
-    /// Handle a notification.
+    /// Process an incoming JSON-RPC notification and perform any side effects for known notification types.
+    ///
+    /// Known notifications handled:
+    /// - "notifications/initialized": logs client initialization.
+    /// - "notifications/cancelled": extracts a `requestId` from `params` and marks the request cancelled.
+    /// - "notifications/roots/listChanged": logs that client workspace roots changed.
+    /// Unknown notifications are ignored (logged at debug level).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use serde_json::json;
+    ///
+    /// // Build a cancelled notification with a `requestId` param.
+    /// let notif = JsonRpcNotification {
+    ///     jsonrpc: "2.0".into(),
+    ///     method: "notifications/cancelled".into(),
+    ///     params: Some(json!({ "requestId": "some-request-id" })),
+    /// };
+    ///
+    /// // `server` is an instance of `McpServer`. Call will mark the request cancelled.
+    /// // server.handle_notification(notif).await;
+    /// ```
     async fn handle_notification(&self, notif: JsonRpcNotification) {
         debug!("Handling notification: {}", notif.method);
 
@@ -259,7 +430,20 @@ impl McpServer {
         }
     }
 
-    /// Handle initialize request.
+    /// Build and return the server's initialize result as JSON.
+    ///
+    /// If `params` includes client workspace roots with URIs beginning with `file://`,
+    /// those paths are added to the server's tracked roots. The returned JSON contains
+    /// the protocol version, server capabilities (including resources capability only
+    /// if resources support is enabled), and server info (name and version).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Call on a server instance: returns an `InitializeResult` serialized as JSON.
+    /// // let resp = server.handle_initialize(None).await.unwrap();
+    /// // assert!(resp.get("protocol_version").is_some());
+    /// ```
     async fn handle_initialize(&self, params: Option<Value>) -> Result<Value> {
         // Extract roots from client if provided
         if let Some(ref params) = params {
@@ -322,7 +506,29 @@ impl McpServer {
         Ok(serde_json::to_value(result)?)
     }
 
-    /// Handle call tool request.
+    /// Calls a named tool with the supplied parameters and returns the tool's result as JSON.
+    ///
+    /// Expects `params` to be a JSON-encoded `CallToolParams` object containing the tool `name` and `arguments`.
+    ///
+    /// # Returns
+    ///
+    /// The tool's execution result as a `serde_json::Value`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::InvalidToolArguments` if `params` is missing or cannot be deserialized into `CallToolParams`,
+    /// `Error::ToolNotFound` if no tool with the given name is registered, and propagates errors from the tool's
+    /// execution or JSON serialization.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use serde_json::json;
+    ///
+    /// // Example params: { "name": "echo", "arguments": ["hello"] }
+    /// let params = Some(json!({ "name": "echo", "arguments": ["hello"] }));
+    /// // let result = server.handle_call_tool(params).await.unwrap();
+    /// ```
     async fn handle_call_tool(&self, params: Option<Value>) -> Result<Value> {
         let params: CallToolParams = params
             .ok_or_else(|| Error::InvalidToolArguments("Missing params".to_string()))
@@ -339,7 +545,22 @@ impl McpServer {
         Ok(serde_json::to_value(result)?)
     }
 
-    /// Handle list prompts request.
+    /// List available prompts and return them as a JSON value.
+    ///
+    /// The returned JSON matches `ListPromptsResult` with the `prompts` field populated
+    /// and `next_cursor` set to `null`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use crate::mcp::prompts::ListPromptsResult;
+    /// # tokio_test::block_on(async {
+    /// // assume `server` is a constructed `McpServer`
+    /// let json = server.handle_list_prompts().await.unwrap();
+    /// let res: ListPromptsResult = serde_json::from_value(json).unwrap();
+    /// assert!(res.next_cursor.is_none());
+    /// # });
+    /// ```
     async fn handle_list_prompts(&self) -> Result<Value> {
         use crate::mcp::prompts::ListPromptsResult;
 
@@ -351,7 +572,26 @@ impl McpServer {
         Ok(serde_json::to_value(result)?)
     }
 
-    /// Handle get prompt request.
+    /// Fetches a prompt by name with optional arguments and returns it as JSON.
+    ///
+    /// Expects `params` to be a JSON object with a required `name` string and an optional
+    /// `arguments` object mapping strings to strings. Returns the prompt result serialized
+    /// to a `serde_json::Value`.
+    ///
+    /// Errors:
+    /// - Returns `Error::InvalidToolArguments` if `params` is missing or cannot be deserialized.
+    /// - Returns `Error::McpProtocol` if no prompt with the given name exists.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use serde_json::json;
+    /// # async fn _example(server: &crate::mcp::server::McpServer) {
+    /// let params = json!({ "name": "welcome", "arguments": { "user": "Alex" } });
+    /// let res = server.handle_get_prompt(Some(params)).await.unwrap();
+    /// // `res` is a serde_json::Value containing the prompt result
+    /// # }
+    /// ```
     async fn handle_get_prompt(&self, params: Option<Value>) -> Result<Value> {
         #[derive(serde::Deserialize)]
         struct GetPromptParams {
@@ -374,7 +614,26 @@ impl McpServer {
         Ok(serde_json::to_value(result)?)
     }
 
-    /// Handle list resources request.
+    /// Lists available resources using an optional pagination cursor.
+    ///
+    /// If the server was built without resource support this returns an MCP protocol
+    /// error indicating resources are not enabled. When resources are enabled, the
+    /// optional `params` JSON may contain a `"cursor"` string used for paging; the
+    /// function returns the serialized listing result from the resource registry.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::McpProtocol("Resources not enabled")` if resources are not
+    /// configured for the server, or propagates errors from the resource registry
+    /// or JSON serialization.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Construct the optional params JSON with a cursor:
+    /// let params = serde_json::json!({ "cursor": "page-2" });
+    /// // Call: server.handle_list_resources(Some(params)).await
+    /// ```
     async fn handle_list_resources(&self, params: Option<Value>) -> Result<Value> {
         let resources = self
             .resources
@@ -394,7 +653,30 @@ impl McpServer {
         Ok(serde_json::to_value(result)?)
     }
 
-    /// Handle read resource request.
+    /// Read a resource identified by a URI and return its serialized content as JSON.
+    ///
+    /// Returns an error if resources are not enabled, if required parameters are missing or malformed,
+    /// or if the underlying resource read operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use serde_json::json;
+    /// # use std::sync::Arc;
+    /// # async fn _example(server: &crate::mcp::server::McpServer) {
+    /// let params = json!({ "uri": "file:///path/to/resource" });
+    /// let result = server.handle_read_resource(Some(params)).await;
+    /// match result {
+    ///     Ok(value) => {
+    ///         // `value` is the JSON-serialized content returned by the resource registry.
+    ///         println!("{}", value);
+    ///     }
+    ///     Err(e) => {
+    ///         eprintln!("read failed: {:?}", e);
+    ///     }
+    /// }
+    /// # }
+    /// ```
     async fn handle_read_resource(&self, params: Option<Value>) -> Result<Value> {
         let resources = self
             .resources
@@ -416,7 +698,25 @@ impl McpServer {
         Ok(serde_json::to_value(result)?)
     }
 
-    /// Handle subscribe to resource.
+    /// Subscribe the default session to a resource identified by URI.
+    ///
+    /// Returns an error if resources are not enabled for this server or if the required `params` are
+    /// missing or cannot be deserialized.
+    ///
+    /// The request causes the server to call the configured ResourceRegistry's `subscribe` method for
+    /// the provided URI using a placeholder session id ("default") and, on success, returns an empty
+    /// JSON object.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use serde_json::json;
+    /// # async fn example(server: &crate::mcp::McpServer) -> Result<(), Box<dyn std::error::Error>> {
+    /// let params = json!({ "uri": "file:///path/to/resource" });
+    /// let res = server.handle_subscribe_resource(Some(params)).await?;
+    /// assert_eq!(res, json!({}));
+    /// # Ok(()) }
+    /// ```
     async fn handle_subscribe_resource(&self, params: Option<Value>) -> Result<Value> {
         let resources = self
             .resources
@@ -461,7 +761,33 @@ impl McpServer {
         Ok(serde_json::json!({}))
     }
 
-    /// Handle completion request.
+    /// Provide completion suggestions for a completion request.
+    ///
+    /// Expects `params` to deserialize to `{ ref: { type, uri?, name? }, argument: { name, value } }`.
+    /// For argument names "path", "file", or "uri" it returns filesystem/resource path completions;
+    /// for argument name "prompt" when `ref.type == "ref/prompt"` it returns prompt-name completions.
+    /// The response is a JSON object with a `completion` field containing `values` (an array of strings)
+    /// and `hasMore` (a boolean).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use serde_json::json;
+    ///
+    /// // Example request params for completing prompt names starting with "ins"
+    /// let params = json!({
+    ///     "ref": { "type": "ref/prompt" },
+    ///     "argument": { "name": "prompt", "value": "ins" }
+    /// });
+    ///
+    /// // Expected shape of the response:
+    /// let expected = json!({
+    ///     "completion": {
+    ///         "values": ["install", "instance"], // example values
+    ///         "hasMore": false
+    ///     }
+    /// });
+    /// ```
     async fn handle_completion(&self, params: Option<Value>) -> Result<Value> {
         #[derive(serde::Deserialize)]
         struct CompletionParams {
@@ -517,7 +843,26 @@ impl McpServer {
         }))
     }
 
-    /// Complete file paths.
+    /// Generates file-path completion candidates that start with the given prefix.
+    ///
+    /// The returned completions are sourced from the optional resource registry (if enabled)
+    /// and from files/directories under client-provided workspace roots. Results are
+    /// deduplicated and limited to at most 20 entries.
+    ///
+    /// # Returns
+    ///
+    /// A vector of completion strings that begin with `prefix`, up to 20 items.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // `server` is an instance of `McpServer`.
+    /// // This example assumes an async context (e.g., inside an async test).
+    /// # async fn example(server: &crate::mcp::server::McpServer) {
+    /// let completions = server.complete_file_path("src/").await;
+    /// // completions contains candidates like "src/main.rs", "src/lib.rs", ...
+    /// # }
+    /// ```
     async fn complete_file_path(&self, prefix: &str) -> Vec<String> {
         let roots = self.roots.read().await;
         let mut completions = Vec::new();
@@ -559,7 +904,32 @@ impl McpServer {
         completions.into_iter().take(20).collect()
     }
 
-    /// Handle logging/setLevel request.
+    /// Set the server's log level from RPC parameters.
+    ///
+    /// Expects `params` to be a JSON object `{ "level": "<level>" }`. Parses the `level` string,
+    /// updates the server's log level, logs the change, and returns an empty JSON object on success.
+    /// If `params` is `None`, returns an MCP protocol error indicating the missing parameter.
+    /// Unknown or unrecognized level strings map to the default level (Info).
+    ///
+    /// # Parameters
+    ///
+    /// - `params`: Optional JSON `Value` containing a `level` string specifying the desired log level.
+    ///
+    /// # Returns
+    ///
+    /// An empty JSON object `{}` on success.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn docs_example(server: &McpServer) {
+    /// let res = server
+    ///     .handle_set_log_level(Some(serde_json::json!({ "level": "debug" })))
+    ///     .await
+    ///     .unwrap();
+    /// assert_eq!(res, serde_json::json!({}));
+    /// # }
+    /// ```
     async fn handle_set_log_level(&self, params: Option<Value>) -> Result<Value> {
         #[derive(serde::Deserialize)]
         struct SetLevelParams {
