@@ -876,7 +876,12 @@ impl McpServer {
         for root in roots.iter() {
             let search_path = root.join(prefix);
             if let Some(parent) = search_path.parent() {
-                if let Ok(mut entries) = tokio::fs::read_dir(parent).await {
+                // Security: Ensure the resolved path stays within the workspace root
+                let canonical_parent = match parent.canonicalize() {
+                    Ok(p) if p.starts_with(root) => p,
+                    _ => continue, // Skip if path escapes workspace or doesn't exist
+                };
+                if let Ok(mut entries) = tokio::fs::read_dir(&canonical_parent).await {
                     while let Ok(Some(entry)) = entries.next_entry().await {
                         let name = entry.file_name().to_string_lossy().to_string();
                         let full = format!(
