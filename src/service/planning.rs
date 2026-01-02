@@ -98,7 +98,7 @@ impl PlanningService {
         store
             .plans
             .values()
-            .filter(|p| status.map_or(true, |s| p.status == s))
+            .filter(|p| status.is_none_or(|s| p.status == s))
             .cloned()
             .collect()
     }

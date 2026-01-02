@@ -115,7 +115,7 @@ impl MemoryService {
         store
             .entries
             .values()
-            .filter(|e| entry_type.map_or(true, |t| e.entry_type == t))
+            .filter(|e| entry_type.is_none_or(|t| e.entry_type == t))
             .cloned()
             .collect()
     }

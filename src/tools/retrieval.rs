@@ -350,7 +350,7 @@ impl ToolHandler for GetContextTool {
         // Perform semantic search
         match self.service.search(&query, Some(token_budget)).await {
             Ok(result) => {
-                let mut output = format!("# 📚 Codebase Context\n\n");
+                let mut output = "# 📚 Codebase Context\n\n".to_string();
                 output.push_str(&format!("**Query:** \"{}\"\n\n", query));
                 output.push_str(&format!(
                     "**Settings:** max_files={}, token_budget={}\n\n",

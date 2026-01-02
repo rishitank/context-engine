@@ -184,10 +184,12 @@ mod tests {
 
     #[test]
     fn test_config_serialization() {
-        let mut config = Config::default();
-        config.transport = Transport::Http;
-        config.port = 8080;
-        config.debug = true;
+        let config = Config {
+            transport: Transport::Http,
+            port: 8080,
+            debug: true,
+            ..Config::default()
+        };
 
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"transport\":\"http\""));

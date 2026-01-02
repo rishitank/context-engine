@@ -95,7 +95,7 @@ impl ReactiveReviewManager {
         let sessions = self.sessions.read().await;
         sessions
             .values()
-            .filter(|s| status.map_or(true, |st| s.status == st))
+            .filter(|s| status.is_none_or(|st| s.status == st))
             .cloned()
             .collect()
     }

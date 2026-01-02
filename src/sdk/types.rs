@@ -60,7 +60,7 @@ pub struct IndexingResult {
 }
 
 /// State of a DirectContext (for persistence).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DirectContextState {
     /// Blob map: path -> blob_name
     pub blob_map: HashMap<String, String>,
@@ -73,18 +73,6 @@ pub struct DirectContextState {
     pub pending_added: Vec<BlobInfo>,
     /// Pending deleted blob names
     pub pending_deleted: Vec<String>,
-}
-
-impl Default for DirectContextState {
-    fn default() -> Self {
-        Self {
-            blob_map: HashMap::new(),
-            client_blob_map: HashMap::new(),
-            checkpoint_id: None,
-            pending_added: Vec::new(),
-            pending_deleted: Vec::new(),
-        }
-    }
 }
 
 // ===== API Request/Response Types =====
