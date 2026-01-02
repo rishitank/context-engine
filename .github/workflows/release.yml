@@ -5,9 +5,18 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., 2.0.1)'
-        required: true
+        description: 'Release version (e.g., 2.0.2). Leave empty to auto-bump patch version.'
+        required: false
         type: string
+      bump_type:
+        description: 'Version bump type (only used if version is empty)'
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
       prerelease:
         description: 'Is this a pre-release?'
         required: false
@@ -35,6 +44,7 @@ jobs:
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
       version: ${{ steps.check.outputs.version }}
+      needs_bump: ${{ steps.check.outputs.needs_bump }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,10 +53,40 @@ jobs:
       - name: Check release conditions
         id: check
         run: |
-          # For workflow_dispatch, always release with provided version
+          # Get current version from Cargo.toml
+          CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          # For workflow_dispatch
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "should_release=true" >> $GITHUB_OUTPUT
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            if [ -n "${{ inputs.version }}" ]; then
+              # Explicit version provided
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+              if [ "${{ inputs.version }}" != "$CURRENT_VERSION" ]; then
+                echo "needs_bump=true" >> $GITHUB_OUTPUT
+              else
+                echo "needs_bump=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              # Auto-bump version based on bump_type
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+              case "${{ inputs.bump_type }}" in
+                major)
+                  NEW_VERSION="$((MAJOR + 1)).0.0"
+                  ;;
+                minor)
+                  NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
+                  ;;
+                patch|*)
+                  NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+                  ;;
+              esac
+              echo "Auto-bumped to: $NEW_VERSION"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+              echo "needs_bump=true" >> $GITHUB_OUTPUT
+            fi
             exit 0
           fi
 
@@ -54,6 +94,7 @@ jobs:
           if [ "${{ github.event_name }}" == "push" ] && [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+            echo "needs_bump=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -65,17 +106,15 @@ jobs:
               exit 0
             fi
 
-            # Get version from Cargo.toml
-            VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-
             # Check if this version tag already exists
-            if git tag -l "v$VERSION" | grep -q .; then
-              echo "Tag v$VERSION already exists, skipping release"
+            if git tag -l "v$CURRENT_VERSION" | grep -q .; then
+              echo "Tag v$CURRENT_VERSION already exists, skipping release"
               echo "should_release=false" >> $GITHUB_OUTPUT
             else
-              echo "New version v$VERSION detected, will release"
+              echo "New version v$CURRENT_VERSION detected, will release"
               echo "should_release=true" >> $GITHUB_OUTPUT
-              echo "version=$VERSION" >> $GITHUB_OUTPUT
+              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+              echo "needs_bump=false" >> $GITHUB_OUTPUT
             fi
             exit 0
           fi
@@ -83,9 +122,41 @@ jobs:
           echo "Unknown trigger, skipping release"
           echo "should_release=false" >> $GITHUB_OUTPUT
 
-  build:
+  # Bump version in Cargo.toml if needed
+  bump-version:
     needs: check
-    if: needs.check.outputs.should_release == 'true'
+    if: needs.check.outputs.should_release == 'true' && needs.check.outputs.needs_bump == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Cargo.toml version
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          echo "Updating Cargo.toml to version $VERSION"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          cat Cargo.toml | head -5
+
+      - name: Commit version bump
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml
+          git commit -m "chore: bump version to $VERSION"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    needs: [check, bump-version]
+    # Run if should_release is true, and either no bump needed OR bump-version succeeded
+    if: |
+      always() &&
+      needs.check.outputs.should_release == 'true' &&
+      (needs.check.outputs.needs_bump != 'true' || needs.bump-version.result == 'success')
     strategy:
       matrix:
         include:
@@ -102,6 +173,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          # Fetch latest to get version bump commit
+          fetch-depth: 0
+
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }} || true
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -122,12 +200,19 @@ jobs:
           path: ${{ matrix.artifact }}
 
   release:
-    needs: [check, build]
+    needs: [check, bump-version, build]
+    if: |
+      always() &&
+      needs.check.outputs.should_release == 'true' &&
+      needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }} || true
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -140,8 +225,14 @@ jobs:
           VERSION="${{ needs.check.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push origin "v$VERSION"
+
+          # Check if tag already exists
+          if git tag -l "v$VERSION" | grep -q .; then
+            echo "Tag v$VERSION already exists, skipping"
+          else
+            git tag -a "v$VERSION" -m "Release v$VERSION"
+            git push origin "v$VERSION"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
