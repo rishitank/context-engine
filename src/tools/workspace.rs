@@ -1319,7 +1319,21 @@ impl ToolHandler for DependencyGraphTool {
         if let Some(file) = file_path {
             // Analyze specific file
             let full_path = workspace.join(file);
-            let content = match fs::read_to_string(&full_path).await {
+
+            // Security: canonicalize and verify path stays within workspace
+            let workspace_canonical = match workspace.canonicalize() {
+                Ok(p) => p,
+                Err(e) => return Ok(error_result(format!("Cannot resolve workspace: {}", e))),
+            };
+            let path_canonical = match full_path.canonicalize() {
+                Ok(p) => p,
+                Err(e) => return Ok(error_result(format!("Cannot resolve {}: {}", file, e))),
+            };
+            if !path_canonical.starts_with(&workspace_canonical) {
+                return Ok(error_result(format!("Path escapes workspace: {}", file)));
+            }
+
+            let content = match fs::read_to_string(&path_canonical).await {
                 Ok(c) => c,
                 Err(e) => return Ok(error_result(format!("Failed to read file: {}", e))),
             };
