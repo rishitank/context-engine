@@ -5,7 +5,7 @@ This document outlines potential improvements to make the Context Engine MCP Ser
 ## Current Implementation Status
 
 ### ✅ Fully Implemented
-- **Tools** - All 55 tools for retrieval, indexing, memory, planning, review, navigation, and workspace analysis
+- **Tools** - All 59 tools for retrieval, indexing, memory, planning, review, navigation, and workspace analysis
 - **JSON-RPC 2.0** - Full request/response/notification handling
 - **Stdio Transport** - Standard input/output for MCP clients
 - **HTTP Transport** - Axum-based HTTP server with SSE
@@ -156,26 +156,29 @@ Allow clients to cancel in-progress operations.
 
 ## Enhanced Tool Capabilities
 
-### Current Tools (49)
+### Current Tools (59)
 - **Retrieval (6):** semantic_search, grep_search, file_search, etc.
 - **Index (5):** index_status, index_directory, clear_index, etc.
 - **Memory (4):** memory_store, memory_retrieve, memory_list, memory_delete
 - **Planning (20):** create_review, analyze_changes, etc.
 - **Review (14):** review_code, suggest_fixes, etc.
+- **Navigation (3):** find_references, go_to_definition, diff_files
+- **Workspace (7):** workspace_stats, git_status, extract_symbols, git_blame, git_log, dependency_graph, file_outline
 
 ### Potential New Tools
 
-| Tool | Description | Priority |
-|------|-------------|----------|
-| `diff_files` | Compare two files | High |
-| `find_references` | Find all references to a symbol | High |
-| `go_to_definition` | Find definition of a symbol | High |
-| `call_hierarchy` | Show call graph for a function | Medium |
-| `type_hierarchy` | Show class/type inheritance | Medium |
-| `ast_query` | Query AST with tree-sitter | Medium |
-| `git_blame` | Show git blame for a file | Low |
-| `git_history` | Show commit history | Low |
-| `dependency_graph` | Show module dependencies | Low |
+| Tool | Description | Priority | Status |
+|------|-------------|----------|--------|
+| `diff_files` | Compare two files | High | ✅ Implemented |
+| `find_references` | Find all references to a symbol | High | ✅ Implemented |
+| `go_to_definition` | Find definition of a symbol | High | ✅ Implemented |
+| `call_hierarchy` | Show call graph for a function | Medium | 🔲 Planned |
+| `type_hierarchy` | Show class/type inheritance | Medium | 🔲 Planned |
+| `ast_query` | Query AST with tree-sitter | Medium | 🔲 Planned |
+| `git_blame` | Show git blame for a file | Low | ✅ Implemented |
+| `git_history` | Show commit history | Low | ✅ Implemented (git_log) |
+| `dependency_graph` | Show module dependencies | Low | ✅ Implemented |
+| `file_outline` | Get structured outline of symbols | Low | ✅ Implemented |
 
 ---
 

@@ -262,7 +262,10 @@ impl ResourceRegistry {
         Ok(())
     }
 
-    /// Discover files in directory (with pagination).
+    /// Maximum recursion depth for file discovery to prevent excessive traversal.
+    const MAX_DISCOVERY_DEPTH: usize = 20;
+
+    /// Discover files in directory (with pagination and depth limit).
     async fn discover_files(
         &self,
         dir: &std::path::Path,
@@ -272,12 +275,18 @@ impl ResourceRegistry {
         use tokio::fs::read_dir;
 
         let mut files = Vec::new();
-        let mut stack = vec![dir.to_path_buf()];
+        // Stack contains (path, depth) tuples
+        let mut stack = vec![(dir.to_path_buf(), 0usize)];
         let mut past_cursor = after.is_none();
 
-        while let Some(current) = stack.pop() {
+        while let Some((current, depth)) = stack.pop() {
             if files.len() >= limit {
                 break;
+            }
+
+            // Skip if we've exceeded the maximum depth
+            if depth > Self::MAX_DISCOVERY_DEPTH {
+                continue;
             }
 
             let mut entries = match read_dir(&current).await {
@@ -299,7 +308,7 @@ impl ResourceRegistry {
                 }
 
                 if path.is_dir() {
-                    stack.push(path);
+                    stack.push((path, depth + 1));
                 } else if path.is_file() {
                     let relative = path
                         .strip_prefix(dir)
