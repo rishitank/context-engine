@@ -103,14 +103,41 @@ Get relevant codebase context optimized for prompt enhancement.
 
 ### `enhance_prompt`
 
-Transform a simple prompt into a detailed, structured prompt with codebase context.
+Transform a simple prompt into a detailed, structured prompt by injecting relevant codebase context and using AI to create actionable instructions. The enhanced prompt will reference specific files, functions, and patterns from your codebase.
 
 **Input Schema:**
 ```json
 {
-  "prompt": "string (required) - The simple prompt to enhance (max 10000 chars)"
+  "prompt": "string (required) - The simple prompt to enhance with codebase context (max 10000 chars)",
+  "token_budget": "integer (optional) - Maximum tokens for codebase context (default: 6000)"
 }
 ```
+
+**What it does:**
+1. Retrieves relevant codebase context based on your prompt
+2. Bundles the context with your original prompt
+3. Uses AI to create an enhanced, actionable prompt that references specific code locations
+
+---
+
+### `bundle_prompt`
+
+Bundle a raw prompt with relevant codebase context. Returns the original prompt alongside retrieved code snippets, file summaries, and related context. Use this when you want direct control over how the context is used without AI rewriting.
+
+**Input Schema:**
+```json
+{
+  "prompt": "string (required) - The prompt to bundle with codebase context (max 10000 chars)",
+  "token_budget": "integer (optional) - Maximum tokens for codebase context (default: 8000)",
+  "format": "string (optional) - Output format: 'structured' (sections), 'formatted' (single string), or 'json' (machine-readable). Default: 'structured'",
+  "system_instruction": "string (optional) - Optional system instruction to include in the formatted output"
+}
+```
+
+**Use cases:**
+- AI agents that need to construct their own prompts with context
+- Custom prompt engineering workflows
+- Building context-aware tool chains
 
 ---
 

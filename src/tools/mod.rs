@@ -47,7 +47,7 @@ pub fn register_all_tools(
     memory_service: Arc<MemoryService>,
     planning_service: Arc<PlanningService>,
 ) {
-    // Retrieval tools (6)
+    // Retrieval tools (7)
     handler.register(retrieval::CodebaseRetrievalTool::new(
         context_service.clone(),
     ));
@@ -55,6 +55,7 @@ pub fn register_all_tools(
     handler.register(retrieval::GetFileTool::new(context_service.clone()));
     handler.register(retrieval::GetContextTool::new(context_service.clone()));
     handler.register(retrieval::EnhancePromptTool::new(context_service.clone()));
+    handler.register(retrieval::BundlePromptTool::new(context_service.clone()));
     handler.register(retrieval::ToolManifestTool::new());
 
     // Index tools (5)

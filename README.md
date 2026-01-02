@@ -72,16 +72,17 @@ Credentials are resolved in order:
 2. Environment variables
 3. Session file (`~/.augment/session.json`)
 
-## MCP Tools (49 Total)
+## MCP Tools (50 Total)
 
-### Retrieval Tools (6)
+### Retrieval Tools (7)
 | Tool | Description |
 |------|-------------|
 | `codebase_retrieval` | Semantic search across the codebase |
 | `semantic_search` | Search for code patterns and text |
 | `get_file` | Retrieve file contents with optional line range |
 | `get_context_for_prompt` | Get comprehensive context bundle |
-| `enhance_prompt` | AI-powered prompt enhancement |
+| `enhance_prompt` | AI-powered prompt enhancement with context injection |
+| `bundle_prompt` | Bundle raw prompt with codebase context (no AI rewriting) |
 | `tool_manifest` | Discover available capabilities |
 
 ### Index Tools (5)

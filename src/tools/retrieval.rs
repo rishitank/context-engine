@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crate::mcp::handler::{
-    error_result, get_optional_string_arg, get_string_arg, success_result, ToolHandler,
+    error_result, get_int_arg, get_optional_string_arg, get_string_arg, success_result, ToolHandler,
 };
 use crate::mcp::protocol::{Tool, ToolResult};
 use crate::service::ContextService;
@@ -365,7 +365,7 @@ impl ToolHandler for GetContextTool {
     }
 }
 
-/// Enhance prompt tool - AI-powered prompt enhancement.
+/// Enhance prompt tool - AI-powered prompt enhancement with codebase context injection.
 pub struct EnhancePromptTool {
     service: Arc<ContextService>,
 }
@@ -381,13 +381,17 @@ impl ToolHandler for EnhancePromptTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "enhance_prompt".to_string(),
-            description: "Transform a simple prompt into a detailed, structured prompt with codebase context using AI-powered enhancement.".to_string(),
+            description: "Transform a simple prompt into a detailed, structured prompt by injecting relevant codebase context and using AI to create actionable instructions. The enhanced prompt will reference specific files, functions, and patterns from your codebase.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": "The simple prompt to enhance"
+                        "description": "The simple prompt to enhance with codebase context"
+                    },
+                    "token_budget": {
+                        "type": "integer",
+                        "description": "Maximum tokens for codebase context (default: 6000)"
                     }
                 },
                 "required": ["prompt"]
@@ -397,6 +401,7 @@ impl ToolHandler for EnhancePromptTool {
 
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let prompt = get_string_arg(&args, "prompt")?;
+        let token_budget = get_int_arg(&args, "token_budget").ok().map(|v| v as usize);
 
         if prompt.len() > 10000 {
             return Ok(error_result(
@@ -405,9 +410,111 @@ impl ToolHandler for EnhancePromptTool {
         }
 
         // Use AI to enhance the prompt with codebase context
-        match self.service.enhance_prompt(&prompt).await {
+        match self.service.enhance_prompt(&prompt, token_budget).await {
             Ok(enhanced) => Ok(success_result(enhanced)),
             Err(e) => Ok(error_result(format!("Prompt enhancement failed: {}", e))),
+        }
+    }
+}
+
+/// Bundle prompt tool - inject codebase context into a prompt without AI rewriting.
+pub struct BundlePromptTool {
+    service: Arc<ContextService>,
+}
+
+impl BundlePromptTool {
+    pub fn new(service: Arc<ContextService>) -> Self {
+        Self { service }
+    }
+}
+
+#[async_trait]
+impl ToolHandler for BundlePromptTool {
+    fn definition(&self) -> Tool {
+        Tool {
+            name: "bundle_prompt".to_string(),
+            description: "Bundle a raw prompt with relevant codebase context. Returns the original prompt alongside retrieved code snippets, file summaries, and related context. Use this when you want direct control over how the context is used without AI rewriting.".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "The prompt to bundle with codebase context"
+                    },
+                    "token_budget": {
+                        "type": "integer",
+                        "description": "Maximum tokens for codebase context (default: 8000)"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["structured", "formatted", "json"],
+                        "description": "Output format: 'structured' (sections), 'formatted' (single string), or 'json' (machine-readable). Default: 'structured'"
+                    },
+                    "system_instruction": {
+                        "type": "string",
+                        "description": "Optional system instruction to include in the formatted output"
+                    }
+                },
+                "required": ["prompt"]
+            }),
+        }
+    }
+
+    async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
+        let prompt = get_string_arg(&args, "prompt")?;
+        let token_budget = get_int_arg(&args, "token_budget").ok().map(|v| v as usize);
+        let format = get_string_arg(&args, "format").unwrap_or_else(|_| "structured".to_string());
+        let system_instruction = get_string_arg(&args, "system_instruction").ok();
+
+        if prompt.len() > 10000 {
+            return Ok(error_result(
+                "Prompt too long: maximum 10000 characters".to_string(),
+            ));
+        }
+
+        // Bundle the prompt with codebase context
+        match self.service.bundle_prompt(&prompt, token_budget).await {
+            Ok(bundle) => {
+                let output = match format.as_str() {
+                    "formatted" => {
+                        if let Some(system) = system_instruction {
+                            bundle.to_formatted_string_with_system(&system)
+                        } else {
+                            bundle.to_formatted_string()
+                        }
+                    }
+                    "json" => serde_json::json!({
+                        "original_prompt": bundle.original_prompt,
+                        "codebase_context": bundle.codebase_context,
+                        "token_budget": bundle.token_budget,
+                        "system_instruction": system_instruction
+                    })
+                    .to_string(),
+                    _ => {
+                        // structured (default)
+                        let mut output = String::new();
+                        output.push_str("# 📦 Bundled Prompt\n\n");
+
+                        if let Some(system) = &system_instruction {
+                            output.push_str("## System Instruction\n");
+                            output.push_str(system);
+                            output.push_str("\n\n");
+                        }
+
+                        output.push_str("## Original Prompt\n");
+                        output.push_str(&bundle.original_prompt);
+                        output.push_str("\n\n");
+
+                        output.push_str("## Codebase Context\n");
+                        output.push_str(&format!("*(Token budget: {})*\n\n", bundle.token_budget));
+                        output.push_str(&bundle.codebase_context);
+
+                        output
+                    }
+                };
+                Ok(success_result(output))
+            }
+            Err(e) => Ok(error_result(format!("Prompt bundling failed: {}", e))),
         }
     }
 }
