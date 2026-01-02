@@ -1,15 +1,17 @@
 //! MCP tool implementations.
 //!
-//! This module contains all 49 MCP tools organized by category:
+//! This module contains all 52 MCP tools organized by category:
 //!
 //! - `retrieval` - Codebase search and context retrieval (6 tools)
 //! - `index` - Index management tools (5 tools)
 //! - `planning` - AI-powered task planning (20 tools)
 //! - `memory` - Persistent memory storage (4 tools)
 //! - `review` - Code review tools (14 tools)
+//! - `navigation` - Code navigation tools (3 tools)
 
 pub mod index;
 pub mod memory;
+pub mod navigation;
 pub mod planning;
 pub mod retrieval;
 pub mod review;
@@ -88,4 +90,9 @@ pub fn register_all_tools(
     handler.register(review::PauseReviewTool::new());
     handler.register(review::ResumeReviewTool::new());
     handler.register(review::GetReviewTelemetryTool::new());
+
+    // Navigation tools (3)
+    handler.register(navigation::FindReferencesTool::new(context_service.clone()));
+    handler.register(navigation::GoToDefinitionTool::new(context_service.clone()));
+    handler.register(navigation::DiffFilesTool::new(context_service));
 }
