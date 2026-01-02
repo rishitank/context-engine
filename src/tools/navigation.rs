@@ -68,7 +68,7 @@ impl ToolHandler for FindReferencesTool {
                     },
                     "file_pattern": {
                         "type": "string",
-                        "description": "Optional glob pattern to filter files (e.g., '*.rs', 'src/**/*.ts')"
+                        "description": "Optional pattern to filter files. Supports extension patterns (e.g., '*.rs', '*.ts') or substring matching (e.g., 'test', 'src/')"
                     },
                     "max_results": {
                         "type": "integer",

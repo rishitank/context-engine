@@ -888,19 +888,29 @@ fn detect_python_symbol(line: &str, line_num: usize) -> Option<Symbol> {
 /// assert_eq!(sym.line, 10);
 /// ```
 fn detect_ts_symbol(line: &str, line_num: usize) -> Option<Symbol> {
-    // Function declarations
-    if line.contains("function ") {
-        let parts: Vec<&str> = line.split("function ").collect();
-        if parts.len() > 1 {
-            let name = parts[1].split('(').next().unwrap_or("").trim().to_string();
-            if !name.is_empty() {
-                return Some(Symbol {
-                    name,
-                    kind: "function".to_string(),
-                    line: line_num,
-                    signature: Some(line.to_string()),
-                });
-            }
+    let trimmed = line.trim_start();
+
+    // Function declarations - check for line-start patterns to avoid false positives
+    // Matches: function foo(), export function foo(), async function foo(), export async function foo()
+    let is_function_decl = trimmed.starts_with("function ")
+        || trimmed.starts_with("export function ")
+        || trimmed.starts_with("async function ")
+        || trimmed.starts_with("export async function ");
+
+    if is_function_decl {
+        let name = extract_name(trimmed, "function ");
+        if !name.is_empty() {
+            let kind = if trimmed.contains("async ") {
+                "async_function"
+            } else {
+                "function"
+            };
+            return Some(Symbol {
+                name,
+                kind: kind.to_string(),
+                line: line_num,
+                signature: Some(line.to_string()),
+            });
         }
     }
     // Class declarations
@@ -1892,6 +1902,34 @@ mod tests {
         let sym = sym.unwrap();
         assert_eq!(sym.name, "processData");
         assert_eq!(sym.kind, "function");
+
+        // Test async function detection
+        let sym = detect_ts_symbol("async function fetchData(): Promise<void> {", 1);
+        assert!(sym.is_some());
+        let sym = sym.unwrap();
+        assert_eq!(sym.name, "fetchData");
+        assert_eq!(sym.kind, "async_function");
+
+        // Test export async function
+        let sym = detect_ts_symbol("export async function loadUser(): Promise<User> {", 1);
+        assert!(sym.is_some());
+        let sym = sym.unwrap();
+        assert_eq!(sym.name, "loadUser");
+        assert_eq!(sym.kind, "async_function");
+    }
+
+    #[test]
+    fn test_detect_ts_symbol_function_false_positives() {
+        // Should NOT match comments mentioning function
+        assert!(detect_ts_symbol("// This is a function definition", 1).is_none());
+        assert!(detect_ts_symbol("/* function comment */", 1).is_none());
+
+        // Should NOT match inline function expressions (not top-level declarations)
+        assert!(detect_ts_symbol("const x = function() {}", 1).is_none());
+        assert!(detect_ts_symbol("  callback: function() {}", 1).is_none());
+
+        // Should NOT match string literals containing "function"
+        assert!(detect_ts_symbol("const msg = 'function is a keyword';", 1).is_none());
     }
 
     #[test]
