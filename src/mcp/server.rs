@@ -16,6 +16,49 @@ use crate::mcp::transport::{Message, Transport};
 use crate::service::ContextService;
 use crate::VERSION;
 
+/// Log level for the MCP server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LogLevel {
+    Debug,
+    #[default]
+    Info,
+    Notice,
+    Warning,
+    Error,
+    Critical,
+    Alert,
+    Emergency,
+}
+
+impl LogLevel {
+    fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "debug" => Self::Debug,
+            "info" => Self::Info,
+            "notice" => Self::Notice,
+            "warning" | "warn" => Self::Warning,
+            "error" => Self::Error,
+            "critical" => Self::Critical,
+            "alert" => Self::Alert,
+            "emergency" => Self::Emergency,
+            _ => Self::Info,
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Info => "info",
+            Self::Notice => "notice",
+            Self::Warning => "warning",
+            Self::Error => "error",
+            Self::Critical => "critical",
+            Self::Alert => "alert",
+            Self::Emergency => "emergency",
+        }
+    }
+}
+
 /// MCP server.
 pub struct McpServer {
     handler: Arc<McpHandler>,
@@ -27,6 +70,8 @@ pub struct McpServer {
     roots: Arc<RwLock<Vec<PathBuf>>>,
     /// Active request IDs for cancellation support.
     active_requests: Arc<RwLock<HashSet<RequestId>>>,
+    /// Current log level.
+    log_level: Arc<RwLock<LogLevel>>,
 }
 
 impl McpServer {
@@ -40,6 +85,7 @@ impl McpServer {
             version: VERSION.to_string(),
             roots: Arc::new(RwLock::new(Vec::new())),
             active_requests: Arc::new(RwLock::new(HashSet::new())),
+            log_level: Arc::new(RwLock::new(LogLevel::default())),
         }
     }
 
@@ -58,7 +104,18 @@ impl McpServer {
             version: VERSION.to_string(),
             roots: Arc::new(RwLock::new(Vec::new())),
             active_requests: Arc::new(RwLock::new(HashSet::new())),
+            log_level: Arc::new(RwLock::new(LogLevel::default())),
         }
+    }
+
+    /// Get the current log level.
+    pub async fn log_level(&self) -> LogLevel {
+        *self.log_level.read().await
+    }
+
+    /// Set the log level.
+    pub async fn set_log_level(&self, level: LogLevel) {
+        *self.log_level.write().await = level;
     }
 
     /// Get the client-provided workspace roots.
@@ -124,6 +181,8 @@ impl McpServer {
             "resources/unsubscribe" => self.handle_unsubscribe_resource(req.params).await,
             // Completions
             "completion/complete" => self.handle_completion(req.params).await,
+            // Logging
+            "logging/setLevel" => self.handle_set_log_level(req.params).await,
             // Unknown
             _ => Err(Error::McpProtocol(format!(
                 "Unknown method: {}",
@@ -486,5 +545,59 @@ impl McpServer {
         }
 
         completions.into_iter().take(20).collect()
+    }
+
+    /// Handle logging/setLevel request.
+    async fn handle_set_log_level(&self, params: Option<Value>) -> Result<Value> {
+        #[derive(serde::Deserialize)]
+        struct SetLevelParams {
+            level: String,
+        }
+
+        let level_str = if let Some(params) = params {
+            let p: SetLevelParams = serde_json::from_value(params)?;
+            p.level
+        } else {
+            return Err(Error::McpProtocol(
+                "Missing level parameter".to_string(),
+            ));
+        };
+
+        let level = LogLevel::from_str(&level_str);
+        self.set_log_level(level).await;
+
+        info!("Log level set to: {}", level.as_str());
+        Ok(serde_json::json!({}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_level_from_str() {
+        assert_eq!(LogLevel::from_str("debug"), LogLevel::Debug);
+        assert_eq!(LogLevel::from_str("DEBUG"), LogLevel::Debug);
+        assert_eq!(LogLevel::from_str("info"), LogLevel::Info);
+        assert_eq!(LogLevel::from_str("warning"), LogLevel::Warning);
+        assert_eq!(LogLevel::from_str("warn"), LogLevel::Warning);
+        assert_eq!(LogLevel::from_str("error"), LogLevel::Error);
+        assert_eq!(LogLevel::from_str("critical"), LogLevel::Critical);
+        assert_eq!(LogLevel::from_str("unknown"), LogLevel::Info); // Default
+    }
+
+    #[test]
+    fn test_log_level_as_str() {
+        assert_eq!(LogLevel::Debug.as_str(), "debug");
+        assert_eq!(LogLevel::Info.as_str(), "info");
+        assert_eq!(LogLevel::Warning.as_str(), "warning");
+        assert_eq!(LogLevel::Error.as_str(), "error");
+        assert_eq!(LogLevel::Emergency.as_str(), "emergency");
+    }
+
+    #[test]
+    fn test_log_level_default() {
+        assert_eq!(LogLevel::default(), LogLevel::Info);
     }
 }

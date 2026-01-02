@@ -170,4 +170,97 @@ mod tests {
         assert_eq!(notification.params.total, Some(100));
         assert_eq!(notification.params.message, Some("Halfway".to_string()));
     }
+
+    #[tokio::test]
+    async fn test_progress_reporter_percent() {
+        let (tx, mut rx) = mpsc::channel(10);
+        let reporter = ProgressReporter::new(ProgressToken::Number(1), tx, Some(200));
+
+        reporter.report_percent(50, Some("Half done")).await;
+
+        let notification = rx.recv().await.unwrap();
+        assert_eq!(notification.params.progress, 100); // 50% of 200
+        assert_eq!(notification.params.total, Some(200));
+    }
+
+    #[tokio::test]
+    async fn test_progress_reporter_complete() {
+        let (tx, mut rx) = mpsc::channel(10);
+        let reporter = ProgressReporter::new(ProgressToken::Number(2), tx, Some(100));
+
+        reporter.complete(Some("Done!")).await;
+
+        let notification = rx.recv().await.unwrap();
+        assert_eq!(notification.params.progress, 100);
+        assert_eq!(notification.params.message, Some("Done!".to_string()));
+    }
+
+    #[test]
+    fn test_progress_token_serialization() {
+        let token_str = ProgressToken::String("test-token".to_string());
+        let token_num = ProgressToken::Number(42);
+
+        let json_str = serde_json::to_string(&token_str).unwrap();
+        let json_num = serde_json::to_string(&token_num).unwrap();
+
+        assert_eq!(json_str, "\"test-token\"");
+        assert_eq!(json_num, "42");
+
+        let parsed_str: ProgressToken = serde_json::from_str(&json_str).unwrap();
+        let parsed_num: ProgressToken = serde_json::from_str(&json_num).unwrap();
+
+        assert_eq!(parsed_str, token_str);
+        assert_eq!(parsed_num, token_num);
+    }
+
+    #[test]
+    fn test_progress_notification_structure() {
+        let notification = ProgressNotification::new(
+            ProgressToken::String("op-1".to_string()),
+            25,
+            Some(100),
+            Some("Processing...".to_string()),
+        );
+
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, "notifications/progress");
+        assert_eq!(notification.params.progress, 25);
+        assert_eq!(notification.params.total, Some(100));
+    }
+
+    #[test]
+    fn test_progress_manager_create_reporter() {
+        let manager = ProgressManager::new();
+
+        let reporter1 = manager.create_reporter(Some(100));
+        let reporter2 = manager.create_reporter(Some(200));
+
+        // Reporters should have different tokens
+        assert_ne!(reporter1.token, reporter2.token);
+    }
+
+    #[test]
+    fn test_progress_manager_with_custom_token() {
+        let manager = ProgressManager::new();
+        let custom_token = ProgressToken::String("custom".to_string());
+
+        let reporter = manager.create_reporter_with_token(custom_token.clone(), Some(50));
+        assert_eq!(reporter.token, custom_token);
+    }
+
+    #[test]
+    fn test_progress_params_serialization() {
+        let params = ProgressParams {
+            progress_token: ProgressToken::Number(1),
+            progress: 50,
+            total: Some(100),
+            message: Some("Working...".to_string()),
+        };
+
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"progressToken\":1"));
+        assert!(json.contains("\"progress\":50"));
+        assert!(json.contains("\"total\":100"));
+        assert!(json.contains("\"message\":\"Working...\""));
+    }
 }

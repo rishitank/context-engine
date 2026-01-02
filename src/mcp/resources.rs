@@ -283,5 +283,90 @@ mod tests {
             ResourceRegistry::guess_mime_type(std::path::Path::new("test.py")),
             Some("text/x-python".to_string())
         );
+        assert_eq!(
+            ResourceRegistry::guess_mime_type(std::path::Path::new("test.ts")),
+            Some("text/typescript".to_string())
+        );
+        assert_eq!(
+            ResourceRegistry::guess_mime_type(std::path::Path::new("test.json")),
+            Some("application/json".to_string())
+        );
+        assert_eq!(
+            ResourceRegistry::guess_mime_type(std::path::Path::new("test.unknown")),
+            Some("text/plain".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resource_serialization() {
+        let resource = Resource {
+            uri: "file:///test/file.rs".to_string(),
+            name: "file.rs".to_string(),
+            description: Some("A test file".to_string()),
+            mime_type: Some("text/x-rust".to_string()),
+        };
+
+        let json = serde_json::to_string(&resource).unwrap();
+        assert!(json.contains("\"uri\":\"file:///test/file.rs\""));
+        assert!(json.contains("\"name\":\"file.rs\""));
+        assert!(json.contains("\"mimeType\":\"text/x-rust\""));
+
+        let parsed: Resource = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.uri, resource.uri);
+        assert_eq!(parsed.name, resource.name);
+    }
+
+    #[test]
+    fn test_resource_contents_serialization() {
+        let contents = ResourceContents {
+            uri: "file:///test/file.rs".to_string(),
+            mime_type: Some("text/x-rust".to_string()),
+            text: Some("fn main() {}".to_string()),
+            blob: None,
+        };
+
+        let json = serde_json::to_string(&contents).unwrap();
+        assert!(json.contains("\"text\":\"fn main() {}\""));
+        assert!(!json.contains("\"blob\"")); // blob should be skipped when None
+    }
+
+    #[test]
+    fn test_list_resources_result_serialization() {
+        let result = ListResourcesResult {
+            resources: vec![Resource {
+                uri: "file:///test.rs".to_string(),
+                name: "test.rs".to_string(),
+                description: None,
+                mime_type: None,
+            }],
+            next_cursor: Some("cursor123".to_string()),
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("\"nextCursor\":\"cursor123\""));
+
+        let result_no_cursor = ListResourcesResult {
+            resources: vec![],
+            next_cursor: None,
+        };
+        let json2 = serde_json::to_string(&result_no_cursor).unwrap();
+        assert!(!json2.contains("nextCursor"));
+    }
+
+    #[test]
+    fn test_read_resource_result_serialization() {
+        let result = ReadResourceResult {
+            contents: vec![ResourceContents {
+                uri: "file:///test.rs".to_string(),
+                mime_type: Some("text/x-rust".to_string()),
+                text: Some("code".to_string()),
+                blob: None,
+            }],
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let parsed: ReadResourceResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.contents.len(), 1);
+        assert_eq!(parsed.contents[0].text, Some("code".to_string()));
     }
 }

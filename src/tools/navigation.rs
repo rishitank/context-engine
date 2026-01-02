@@ -521,3 +521,121 @@ fn generate_diff(
 
     output
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches_pattern_extension() {
+        assert!(matches_pattern("file.rs", "*.rs"));
+        assert!(matches_pattern("test.py", "*.py"));
+        assert!(!matches_pattern("file.rs", "*.py"));
+        assert!(!matches_pattern("file.txt", "*.rs"));
+    }
+
+    #[test]
+    fn test_matches_pattern_contains() {
+        assert!(matches_pattern("test_file.rs", "test"));
+        assert!(matches_pattern("my_test.py", "test"));
+        assert!(!matches_pattern("file.rs", "test"));
+    }
+
+    #[test]
+    fn test_get_language() {
+        assert_eq!(get_language("rs"), "rust");
+        assert_eq!(get_language("py"), "python");
+        assert_eq!(get_language("ts"), "typescript");
+        assert_eq!(get_language("tsx"), "typescript");
+        assert_eq!(get_language("js"), "javascript");
+        assert_eq!(get_language("go"), "go");
+        assert_eq!(get_language("unknown"), "text");
+    }
+
+    #[test]
+    fn test_get_definition_patterns_rust() {
+        let patterns = get_definition_patterns("MyStruct", Some("rust"));
+        assert!(patterns.contains(&"struct MyStruct ".to_string()));
+        assert!(patterns.contains(&"fn MyStruct(".to_string()));
+        assert!(patterns.contains(&"enum MyStruct ".to_string()));
+    }
+
+    #[test]
+    fn test_get_definition_patterns_python() {
+        let patterns = get_definition_patterns("my_func", Some("python"));
+        assert!(patterns.contains(&"def my_func(".to_string()));
+        assert!(patterns.contains(&"class my_func:".to_string()));
+    }
+
+    #[test]
+    fn test_get_definition_patterns_typescript() {
+        let patterns = get_definition_patterns("MyClass", Some("typescript"));
+        assert!(patterns.contains(&"class MyClass ".to_string()));
+        assert!(patterns.contains(&"interface MyClass ".to_string()));
+        assert!(patterns.contains(&"function MyClass(".to_string()));
+    }
+
+    #[test]
+    fn test_get_definition_patterns_generic() {
+        let patterns = get_definition_patterns("Symbol", None);
+        assert!(!patterns.is_empty());
+        // Should have generic patterns for multiple languages
+        assert!(patterns.contains(&"fn Symbol(".to_string()));
+        assert!(patterns.contains(&"def Symbol(".to_string()));
+        assert!(patterns.contains(&"class Symbol ".to_string()));
+    }
+
+    #[test]
+    fn test_generate_diff_identical() {
+        let content = "line1\nline2\nline3";
+        let diff = generate_diff("a.txt", "b.txt", content, content, 3);
+        assert!(diff.is_empty());
+    }
+
+    #[test]
+    fn test_generate_diff_different() {
+        let content1 = "line1\nline2\nline3";
+        let content2 = "line1\nmodified\nline3";
+        let diff = generate_diff("a.txt", "b.txt", content1, content2, 1);
+
+        assert!(diff.contains("--- a.txt"));
+        assert!(diff.contains("+++ b.txt"));
+        assert!(diff.contains("-line2"));
+        assert!(diff.contains("+modified"));
+    }
+
+    #[test]
+    fn test_generate_diff_with_context() {
+        let content1 = "a\nb\nc\nd\ne";
+        let content2 = "a\nb\nX\nd\ne";
+        let diff = generate_diff("f1", "f2", content1, content2, 1);
+
+        // Should include context lines around the change
+        assert!(diff.contains("@@"));
+    }
+
+    #[test]
+    fn test_reference_struct() {
+        let reference = Reference {
+            file: "src/main.rs".to_string(),
+            line: 42,
+            context: "fn main() {}".to_string(),
+        };
+
+        assert_eq!(reference.file, "src/main.rs");
+        assert_eq!(reference.line, 42);
+    }
+
+    #[test]
+    fn test_definition_struct() {
+        let definition = Definition {
+            file: "src/lib.rs".to_string(),
+            line: 10,
+            context: "pub struct MyStruct {}".to_string(),
+            language: "rust".to_string(),
+        };
+
+        assert_eq!(definition.file, "src/lib.rs");
+        assert_eq!(definition.language, "rust");
+    }
+}
