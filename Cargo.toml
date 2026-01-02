@@ -1,6 +1,6 @@
 [package]
 name = "context-engine-rs"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2021"
 description = "A high-performance MCP server for AI-powered codebase context retrieval"
 authors = ["Rishi Tank"]
