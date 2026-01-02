@@ -304,4 +304,3 @@ mod tests {
         assert_eq!(file.risk_score, 25);
     }
 }
-

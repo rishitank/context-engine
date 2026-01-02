@@ -42,7 +42,12 @@ pub async fn start_server(config: &Config, handler: Arc<McpHandler>) -> Result<(
         .route("/mcp/initialize", post(initialize))
         .route("/mcp/tools/list", get(list_tools))
         .route("/mcp/tools/call", post(call_tool))
-        .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
@@ -120,4 +125,3 @@ async fn call_tool(
         ),
     }
 }
-

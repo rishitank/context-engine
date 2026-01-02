@@ -206,7 +206,11 @@ mod tests {
     fn test_api_error_constructor() {
         let err = Error::api(500, "Internal Server Error", "Something went wrong");
         match err {
-            Error::Api { status, status_text, message } => {
+            Error::Api {
+                status,
+                status_text,
+                message,
+            } => {
                 assert_eq!(status, 500);
                 assert_eq!(status_text, "Internal Server Error");
                 assert_eq!(message, "Something went wrong");
@@ -230,7 +234,10 @@ mod tests {
     #[test]
     fn test_review_errors() {
         let invalid_diff = Error::InvalidDiffFormat("missing header".to_string());
-        assert_eq!(invalid_diff.to_string(), "Invalid diff format: missing header");
+        assert_eq!(
+            invalid_diff.to_string(),
+            "Invalid diff format: missing header"
+        );
 
         let session_not_found = Error::ReviewSessionNotFound("session-456".to_string());
         assert_eq!(
@@ -242,7 +249,10 @@ mod tests {
     #[test]
     fn test_file_errors() {
         let file_not_found = Error::FileNotFound("/path/to/file.rs".to_string());
-        assert_eq!(file_not_found.to_string(), "File not found: /path/to/file.rs");
+        assert_eq!(
+            file_not_found.to_string(),
+            "File not found: /path/to/file.rs"
+        );
 
         let file_too_large = Error::FileTooLarge {
             path: "large.bin".to_string(),
@@ -256,20 +266,26 @@ mod tests {
         let tool_not_found = Error::ToolNotFound("unknown_tool".to_string());
         assert_eq!(tool_not_found.to_string(), "Tool not found: unknown_tool");
 
-        let invalid_args = Error::InvalidToolArguments("missing required field 'query'".to_string());
+        let invalid_args =
+            Error::InvalidToolArguments("missing required field 'query'".to_string());
         assert!(invalid_args.to_string().contains("missing required field"));
     }
 
     #[test]
     fn test_blob_error() {
-        let blob_too_large = Error::BlobTooLarge { max_size: 5_000_000 };
+        let blob_too_large = Error::BlobTooLarge {
+            max_size: 5_000_000,
+        };
         assert!(blob_too_large.to_string().contains("5000000 bytes"));
     }
 
     #[test]
     fn test_timeout_and_cancelled() {
         let timeout = Error::Timeout { seconds: 60 };
-        assert_eq!(timeout.to_string(), "Timeout: operation timed out after 60 seconds");
+        assert_eq!(
+            timeout.to_string(),
+            "Timeout: operation timed out after 60 seconds"
+        );
 
         let cancelled = Error::Cancelled;
         assert_eq!(cancelled.to_string(), "Cancelled: operation was cancelled");

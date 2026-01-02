@@ -59,8 +59,7 @@ impl ToolHandler for ReviewDiffTool {
                 // Format the review response
                 let review = format!(
                     "## Code Review\n\n### Diff Analysis\n\n{}\n\n### Related Context\n\n{}",
-                    "Review completed. See findings below.",
-                    result
+                    "Review completed. See findings below.", result
                 );
                 Ok(success_result(review))
             }
@@ -207,7 +206,11 @@ impl ToolHandler for ReviewChangesTool {
         let files: Vec<String> = args
             .get("files")
             .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         let query = format!("Review changes in files: {}", files.join(", "));
@@ -248,7 +251,10 @@ impl ToolHandler for ReviewGitDiffTool {
     }
 
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
-        let base = args.get("base").and_then(|v| v.as_str()).unwrap_or("HEAD~1");
+        let base = args
+            .get("base")
+            .and_then(|v| v.as_str())
+            .unwrap_or("HEAD~1");
         let head = args.get("head").and_then(|v| v.as_str()).unwrap_or("HEAD");
 
         // Execute git diff
@@ -260,7 +266,10 @@ impl ToolHandler for ReviewGitDiffTool {
         match output {
             Ok(out) => {
                 let diff = String::from_utf8_lossy(&out.stdout);
-                Ok(success_result(format!("## Git Diff ({} -> {})\n\n```diff\n{}\n```", base, head, diff)))
+                Ok(success_result(format!(
+                    "## Git Diff ({} -> {})\n\n```diff\n{}\n```",
+                    base, head, diff
+                )))
             }
             Err(e) => Ok(error_result(format!("Failed to get git diff: {}", e))),
         }

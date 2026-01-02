@@ -86,7 +86,7 @@ impl ReviewPipeline {
 
         // Parse the diff
         let files = self.parse_diff(diff)?;
-        
+
         // Calculate risk score
         let (risk_score, risk_level) = self.calculate_risk(&files);
 
@@ -117,7 +117,10 @@ impl ReviewPipeline {
         let mut current_file: Option<ReviewFile> = None;
 
         for line in diff.lines() {
-            if line.starts_with("diff --git") || line.starts_with("--- ") || line.starts_with("+++ ") {
+            if line.starts_with("diff --git")
+                || line.starts_with("--- ")
+                || line.starts_with("+++ ")
+            {
                 // Extract file path
                 if line.starts_with("+++ ") {
                     let path = line.trim_start_matches("+++ ").trim_start_matches("b/");
@@ -213,10 +216,22 @@ impl ReviewPipeline {
 
         // Security patterns to check
         let security_patterns = [
-            ("API key exposure", r#"(?i)(api[_-]?key|apikey)\s*[:=]\s*['"]?[a-zA-Z0-9]{20,}"#),
-            ("Password in code", r#"(?i)(password|passwd|pwd)\s*[:=]\s*['"]"#),
-            ("SQL injection risk", r#"(?i)(execute|query)\s*\(\s*['"].*\+"#),
-            ("Hardcoded secret", r#"(?i)(secret|token|credential)\s*[:=]\s*['"]"#),
+            (
+                "API key exposure",
+                r#"(?i)(api[_-]?key|apikey)\s*[:=]\s*['"]?[a-zA-Z0-9]{20,}"#,
+            ),
+            (
+                "Password in code",
+                r#"(?i)(password|passwd|pwd)\s*[:=]\s*['"]"#,
+            ),
+            (
+                "SQL injection risk",
+                r#"(?i)(execute|query)\s*\(\s*['"].*\+"#,
+            ),
+            (
+                "Hardcoded secret",
+                r#"(?i)(secret|token|credential)\s*[:=]\s*['"]"#,
+            ),
         ];
 
         if self.config.security_checks {
@@ -228,11 +243,17 @@ impl ReviewPipeline {
                             finding_type: FindingType::Security,
                             severity: Severity::Critical,
                             title: name.to_string(),
-                            description: format!("Potential security issue detected: {}", cap.as_str()),
+                            description: format!(
+                                "Potential security issue detected: {}",
+                                cap.as_str()
+                            ),
                             file: String::new(),
                             line: None,
                             line_range: None,
-                            suggestion: Some("Review and remove any hardcoded secrets or sensitive data".to_string()),
+                            suggestion: Some(
+                                "Review and remove any hardcoded secrets or sensitive data"
+                                    .to_string(),
+                            ),
                             code_snippet: Some(cap.as_str().to_string()),
                             actionable: true,
                             category: Some("security".to_string()),
@@ -245,7 +266,10 @@ impl ReviewPipeline {
         // Performance patterns
         if self.config.performance_checks {
             let perf_patterns = [
-                ("N+1 query potential", r"(?i)for\s*\([^)]*\)\s*\{[^}]*\.(find|query|select)"),
+                (
+                    "N+1 query potential",
+                    r"(?i)for\s*\([^)]*\)\s*\{[^}]*\.(find|query|select)",
+                ),
                 ("Missing async/await", r"\.then\s*\([^)]*\)\s*\.then"),
             ];
 
@@ -413,17 +437,15 @@ mod tests {
     #[test]
     fn test_risk_calculation_low() {
         let config = create_test_config();
-        let files = vec![
-            ReviewFile {
-                path: "src/utils.rs".to_string(),
-                change_type: ChangeType::Modified,
-                additions: 10,
-                deletions: 5,
-                hunks: Vec::new(),
-                risk_score: 0,
-                findings: Vec::new(),
-            },
-        ];
+        let files = vec![ReviewFile {
+            path: "src/utils.rs".to_string(),
+            change_type: ChangeType::Modified,
+            additions: 10,
+            deletions: 5,
+            hunks: Vec::new(),
+            risk_score: 0,
+            findings: Vec::new(),
+        }];
 
         let (score, level) = calculate_test_risk(&files, &config.risk_thresholds);
 
@@ -435,17 +457,15 @@ mod tests {
     #[test]
     fn test_risk_calculation_medium() {
         let config = create_test_config();
-        let files = vec![
-            ReviewFile {
-                path: "src/utils.rs".to_string(),
-                change_type: ChangeType::Modified,
-                additions: 80,
-                deletions: 30,
-                hunks: Vec::new(),
-                risk_score: 0,
-                findings: Vec::new(),
-            },
-        ];
+        let files = vec![ReviewFile {
+            path: "src/utils.rs".to_string(),
+            change_type: ChangeType::Modified,
+            additions: 80,
+            deletions: 30,
+            hunks: Vec::new(),
+            risk_score: 0,
+            findings: Vec::new(),
+        }];
 
         let (score, level) = calculate_test_risk(&files, &config.risk_thresholds);
 
@@ -458,17 +478,15 @@ mod tests {
     #[test]
     fn test_risk_calculation_high() {
         let config = create_test_config();
-        let files = vec![
-            ReviewFile {
-                path: "src/auth/login.rs".to_string(),
-                change_type: ChangeType::Modified,
-                additions: 100,
-                deletions: 50,
-                hunks: Vec::new(),
-                risk_score: 0,
-                findings: Vec::new(),
-            },
-        ];
+        let files = vec![ReviewFile {
+            path: "src/auth/login.rs".to_string(),
+            change_type: ChangeType::Modified,
+            additions: 100,
+            deletions: 50,
+            hunks: Vec::new(),
+            risk_score: 0,
+            findings: Vec::new(),
+        }];
 
         let (score, level) = calculate_test_risk(&files, &config.risk_thresholds);
 
@@ -539,8 +557,11 @@ mod tests {
             (r#"const name = "John""#, false),
         ];
 
-        let api_key_regex = regex::Regex::new(r#"(?i)(api[_-]?key|apikey)\s*[:=]\s*['"]?[a-zA-Z0-9]{20,}"#).unwrap();
-        let password_regex = regex::Regex::new(r#"(?i)(password|passwd|pwd)\s*[:=]\s*['"]"#).unwrap();
+        let api_key_regex =
+            regex::Regex::new(r#"(?i)(api[_-]?key|apikey)\s*[:=]\s*['"]?[a-zA-Z0-9]{20,}"#)
+                .unwrap();
+        let password_regex =
+            regex::Regex::new(r#"(?i)(password|passwd|pwd)\s*[:=]\s*['"]"#).unwrap();
 
         for (input, should_match) in &patterns {
             let matches = api_key_regex.is_match(input) || password_regex.is_match(input);
@@ -591,14 +612,12 @@ mod tests {
             security_checks: true,
             performance_checks: false,
             style_checks: false,
-            invariants: vec![
-                InvariantDefinition {
-                    name: "No TODO".to_string(),
-                    description: "Code should not contain TODO comments".to_string(),
-                    pattern: "TODO".to_string(),
-                    severity: Severity::Warning,
-                },
-            ],
+            invariants: vec![InvariantDefinition {
+                name: "No TODO".to_string(),
+                description: "Code should not contain TODO comments".to_string(),
+                pattern: "TODO".to_string(),
+                severity: Severity::Warning,
+            }],
             risk_thresholds: RiskThresholds::default(),
         };
 

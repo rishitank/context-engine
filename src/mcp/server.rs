@@ -139,8 +139,7 @@ impl McpServer {
         let params: CallToolParams = params
             .ok_or_else(|| Error::InvalidToolArguments("Missing params".to_string()))
             .and_then(|v| {
-                serde_json::from_value(v)
-                    .map_err(|e| Error::InvalidToolArguments(e.to_string()))
+                serde_json::from_value(v).map_err(|e| Error::InvalidToolArguments(e.to_string()))
             })?;
 
         let handler = self
@@ -152,4 +151,3 @@ impl McpServer {
         Ok(serde_json::to_value(result)?)
     }
 }
-

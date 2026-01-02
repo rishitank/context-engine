@@ -250,4 +250,3 @@ mod tests {
         assert_eq!(result.duration, 1000);
     }
 }
-

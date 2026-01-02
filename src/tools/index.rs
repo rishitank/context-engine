@@ -44,7 +44,8 @@ that enables fast, meaning-based code search.
 - C/C++ (.c, .cpp, .h, .hpp), Swift (.swift)
 - Web (.vue, .svelte, .astro, .html, .css, .scss)
 - Config (.json, .yaml, .yml, .toml, .xml)
-- Documentation (.md, .txt)"#.to_string(),
+- Documentation (.md, .txt)"#
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -64,7 +65,10 @@ that enables fast, meaning-based code search.
 
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let force = args.get("force").and_then(|v| v.as_bool()).unwrap_or(false);
-        let background = args.get("background").and_then(|v| v.as_bool()).unwrap_or(false);
+        let background = args
+            .get("background")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         let start = Instant::now();
 
@@ -205,7 +209,8 @@ impl ToolHandler for ClearIndexTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "clear_index".to_string(),
-            description: "Remove saved index state and clear caches without rebuilding.".to_string(),
+            description: "Remove saved index state and clear caches without rebuilding."
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {},
@@ -261,10 +266,12 @@ impl ToolHandler for RefreshIndexTool {
             Ok(_) => {
                 let status = self.service.status().await;
                 let json = serde_json::to_string_pretty(&status)?;
-                Ok(success_result(format!("Index refreshed successfully.\n{}", json)))
+                Ok(success_result(format!(
+                    "Index refreshed successfully.\n{}",
+                    json
+                )))
             }
             Err(e) => Ok(error_result(format!("Failed to refresh index: {}", e))),
         }
     }
 }
-

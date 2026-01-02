@@ -66,7 +66,7 @@ impl FileWatcher {
         // Create the watcher
         let pending_clone = pending.clone();
         let ignore_patterns = self.ignore_patterns.clone();
-        
+
         let watcher = RecommendedWatcher::new(
             move |res: std::result::Result<Event, notify::Error>| {
                 match res {
@@ -74,8 +74,9 @@ impl FileWatcher {
                         for path in event.paths {
                             // Check if should ignore
                             let path_str = path.to_string_lossy();
-                            let should_ignore = ignore_patterns.iter().any(|p| path_str.contains(p));
-                            
+                            let should_ignore =
+                                ignore_patterns.iter().any(|p| path_str.contains(p));
+
                             if should_ignore {
                                 continue;
                             }
@@ -88,7 +89,7 @@ impl FileWatcher {
                             };
 
                             let change = FileChange { path, kind };
-                            
+
                             // Add to pending (blocking)
                             if let Ok(mut pending) = pending_clone.try_write() {
                                 pending.push(change);
@@ -117,7 +118,7 @@ impl FileWatcher {
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_millis(debounce_ms)).await;
-                
+
                 let changes: Vec<FileChange> = {
                     let mut pending = pending_for_debounce.write().await;
                     std::mem::take(&mut *pending)
@@ -147,4 +148,3 @@ impl FileWatcher {
         self.pending_changes.read().await.len()
     }
 }
-

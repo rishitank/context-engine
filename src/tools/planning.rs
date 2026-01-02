@@ -247,7 +247,11 @@ impl ToolHandler for UpdateStepTool {
             _ => return Ok(error_result(format!("Invalid status: {}", status_str))),
         };
 
-        match self.service.update_step_status(&plan_id, step_id, status).await {
+        match self
+            .service
+            .update_step_status(&plan_id, step_id, status)
+            .await
+        {
             Ok(plan) => {
                 let json = serde_json::to_string_pretty(&plan)?;
                 Ok(success_result(json))
@@ -290,7 +294,10 @@ impl ToolHandler for RefinePlanTool {
         match self.service.get_plan(&plan_id).await {
             Some(plan) => {
                 let json = serde_json::to_string_pretty(&plan)?;
-                Ok(success_result(format!("Plan refinement requested:\n{}", json)))
+                Ok(success_result(format!(
+                    "Plan refinement requested:\n{}",
+                    json
+                )))
             }
             None => Ok(error_result(format!("Plan not found: {}", plan_id))),
         }
@@ -532,7 +539,11 @@ impl ToolHandler for StartStepTool {
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let plan_id = get_string_arg(&args, "plan_id")?;
         let step_id = args.get("step_id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        match self.service.update_step_status(&plan_id, step_id, StepStatus::InProgress).await {
+        match self
+            .service
+            .update_step_status(&plan_id, step_id, StepStatus::InProgress)
+            .await
+        {
             Ok(plan) => {
                 let json = serde_json::to_string_pretty(&plan)?;
                 Ok(success_result(json))
@@ -574,7 +585,11 @@ impl ToolHandler for CompleteStepTool {
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let plan_id = get_string_arg(&args, "plan_id")?;
         let step_id = args.get("step_id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        match self.service.update_step_status(&plan_id, step_id, StepStatus::Completed).await {
+        match self
+            .service
+            .update_step_status(&plan_id, step_id, StepStatus::Completed)
+            .await
+        {
             Ok(plan) => {
                 let json = serde_json::to_string_pretty(&plan)?;
                 Ok(success_result(json))
@@ -616,7 +631,11 @@ impl ToolHandler for FailStepTool {
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let plan_id = get_string_arg(&args, "plan_id")?;
         let step_id = args.get("step_id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-        match self.service.update_step_status(&plan_id, step_id, StepStatus::Failed).await {
+        match self
+            .service
+            .update_step_status(&plan_id, step_id, StepStatus::Failed)
+            .await
+        {
             Ok(plan) => {
                 let json = serde_json::to_string_pretty(&plan)?;
                 Ok(success_result(json))
@@ -658,9 +677,21 @@ impl ToolHandler for ViewProgressTool {
         match self.service.get_plan(&plan_id).await {
             Some(plan) => {
                 let total = plan.steps.len();
-                let completed = plan.steps.iter().filter(|s| s.status == StepStatus::Completed).count();
-                let in_progress = plan.steps.iter().filter(|s| s.status == StepStatus::InProgress).count();
-                let failed = plan.steps.iter().filter(|s| s.status == StepStatus::Failed).count();
+                let completed = plan
+                    .steps
+                    .iter()
+                    .filter(|s| s.status == StepStatus::Completed)
+                    .count();
+                let in_progress = plan
+                    .steps
+                    .iter()
+                    .filter(|s| s.status == StepStatus::InProgress)
+                    .count();
+                let failed = plan
+                    .steps
+                    .iter()
+                    .filter(|s| s.status == StepStatus::Failed)
+                    .count();
                 let pending = total - completed - in_progress - failed;
 
                 let progress = serde_json::json!({
@@ -841,7 +872,10 @@ impl ToolHandler for ComparePlanVersionsTool {
 
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let plan_id = get_string_arg(&args, "plan_id")?;
-        let from_version = args.get("from_version").and_then(|v| v.as_i64()).unwrap_or(1);
+        let from_version = args
+            .get("from_version")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(1);
         let to_version = args.get("to_version").and_then(|v| v.as_i64()).unwrap_or(2);
         let result = serde_json::json!({
             "plan_id": plan_id,
@@ -887,7 +921,10 @@ impl ToolHandler for RollbackPlanTool {
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let plan_id = get_string_arg(&args, "plan_id")?;
         let version = args.get("version").and_then(|v| v.as_i64()).unwrap_or(1);
-        let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("No reason provided");
+        let reason = args
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("No reason provided");
         let result = serde_json::json!({
             "plan_id": plan_id,
             "rolled_back_to": version,

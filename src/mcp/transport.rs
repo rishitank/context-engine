@@ -23,10 +23,7 @@ pub enum Message {
 #[async_trait]
 pub trait Transport: Send + Sync {
     /// Start the transport, returning channels for messages.
-    async fn start(&mut self) -> Result<(
-        mpsc::Receiver<Message>,
-        mpsc::Sender<Message>,
-    )>;
+    async fn start(&mut self) -> Result<(mpsc::Receiver<Message>, mpsc::Sender<Message>)>;
 
     /// Stop the transport.
     async fn stop(&mut self) -> Result<()>;
@@ -87,7 +84,9 @@ impl Transport for StdioTransport {
                             if tx.send(Message::Request(req)).await.is_err() {
                                 break;
                             }
-                        } else if let Ok(notif) = serde_json::from_str::<JsonRpcNotification>(trimmed) {
+                        } else if let Ok(notif) =
+                            serde_json::from_str::<JsonRpcNotification>(trimmed)
+                        {
                             if tx.send(Message::Notification(notif)).await.is_err() {
                                 break;
                             }
@@ -145,4 +144,3 @@ impl Transport for StdioTransport {
         Ok(())
     }
 }
-

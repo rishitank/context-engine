@@ -169,4 +169,3 @@ impl Timer {
         self.start.elapsed().as_secs_f64()
     }
 }
-

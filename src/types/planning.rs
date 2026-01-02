@@ -259,26 +259,24 @@ mod tests {
             title: "Refactor Module".to_string(),
             description: "Refactor the authentication module".to_string(),
             status: PlanStatus::Draft,
-            steps: vec![
-                Step {
-                    id: 1,
-                    title: "Analyze".to_string(),
-                    description: "Analyze current code".to_string(),
-                    status: StepStatus::Pending,
-                    step_type: StepType::Analysis,
-                    dependencies: vec![],
-                    affected_files: vec![],
-                    estimated_duration: None,
-                    actual_duration: None,
-                    completed_at: None,
-                    error: None,
-                    output: None,
-                    requires_approval: false,
-                    approval: None,
-                    rollback: None,
-                    validation: vec![],
-                },
-            ],
+            steps: vec![Step {
+                id: 1,
+                title: "Analyze".to_string(),
+                description: "Analyze current code".to_string(),
+                status: StepStatus::Pending,
+                step_type: StepType::Analysis,
+                dependencies: vec![],
+                affected_files: vec![],
+                estimated_duration: None,
+                actual_duration: None,
+                completed_at: None,
+                error: None,
+                output: None,
+                requires_approval: false,
+                approval: None,
+                rollback: None,
+                validation: vec![],
+            }],
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
             metadata: HashMap::new(),
@@ -300,14 +298,12 @@ mod tests {
         let assessment = RiskAssessment {
             level: RiskLevel::Medium,
             score: 45,
-            factors: vec![
-                RiskFactor {
-                    name: "Complexity".to_string(),
-                    description: "High cyclomatic complexity".to_string(),
-                    impact: RiskLevel::Medium,
-                    likelihood: RiskLevel::High,
-                },
-            ],
+            factors: vec![RiskFactor {
+                name: "Complexity".to_string(),
+                description: "High cyclomatic complexity".to_string(),
+                impact: RiskLevel::Medium,
+                likelihood: RiskLevel::High,
+            }],
             mitigations: vec!["Add comprehensive tests".to_string()],
         };
 
@@ -335,4 +331,3 @@ mod tests {
         }
     }
 }
-

@@ -45,4 +45,3 @@ pub const MAX_FILE_SIZE: usize = 1024 * 1024;
 
 /// Default token budget for context windows
 pub const DEFAULT_TOKEN_BUDGET: usize = 8000;
-

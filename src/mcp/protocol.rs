@@ -140,9 +140,18 @@ pub struct ToolResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ContentBlock {
-    Text { text: String },
-    Image { data: String, mime_type: String },
-    Resource { uri: String, mime_type: Option<String>, text: Option<String> },
+    Text {
+        text: String,
+    },
+    Image {
+        data: String,
+        mime_type: String,
+    },
+    Resource {
+        uri: String,
+        mime_type: Option<String>,
+        text: Option<String>,
+    },
 }
 
 /// List tools result.
@@ -254,7 +263,9 @@ mod tests {
     #[test]
     fn test_tool_result_success() {
         let result = ToolResult {
-            content: vec![ContentBlock::Text { text: "Success".to_string() }],
+            content: vec![ContentBlock::Text {
+                text: "Success".to_string(),
+            }],
             is_error: false,
         };
 
@@ -266,7 +277,9 @@ mod tests {
     #[test]
     fn test_tool_result_error() {
         let result = ToolResult {
-            content: vec![ContentBlock::Text { text: "Error occurred".to_string() }],
+            content: vec![ContentBlock::Text {
+                text: "Error occurred".to_string(),
+            }],
             is_error: true,
         };
 
@@ -275,7 +288,9 @@ mod tests {
 
     #[test]
     fn test_content_block_variants() {
-        let text = ContentBlock::Text { text: "Hello".to_string() };
+        let text = ContentBlock::Text {
+            text: "Hello".to_string(),
+        };
         let image = ContentBlock::Image {
             data: "base64data".to_string(),
             mime_type: "image/png".to_string(),

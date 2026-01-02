@@ -77,7 +77,7 @@ impl ApiClient {
     /// Handle API response, extracting errors.
     async fn handle_response<R: DeserializeOwned>(&self, response: Response) -> Result<R> {
         let status = response.status();
-        
+
         if !status.is_success() {
             let status_text = status.canonical_reason().unwrap_or("Unknown");
             let body = response.text().await.unwrap_or_default();
@@ -98,7 +98,7 @@ impl ApiClient {
     ) -> Result<R> {
         let params = BackoffParams::default();
         let body = body.clone();
-        
+
         retry_api(
             || async { self.request(endpoint, &body).await },
             &params,
@@ -163,11 +163,7 @@ impl ApiClient {
     }
 
     /// Chat with the AI using SSE streaming.
-    pub async fn chat_stream(
-        &self,
-        prompt: &str,
-        blobs: Blobs,
-    ) -> Result<String> {
+    pub async fn chat_stream(&self, prompt: &str, blobs: Blobs) -> Result<String> {
         let url = format!("{}/chat-stream", self.api_url.trim_end_matches('/'));
         let request_id = Uuid::new_v4().to_string();
 
@@ -217,4 +213,3 @@ impl ApiClient {
         Ok(result)
     }
 }
-

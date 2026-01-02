@@ -45,7 +45,7 @@ impl MemoryService {
     /// Create a new memory service.
     pub async fn new(workspace: &Path) -> Result<Self> {
         let storage_path = workspace.join(".context-engine").join("memory.json");
-        
+
         // Create directory if needed
         if let Some(parent) = storage_path.parent() {
             fs::create_dir_all(parent).await?;
@@ -74,9 +74,14 @@ impl MemoryService {
     }
 
     /// Store a memory entry.
-    pub async fn store(&self, key: String, value: String, entry_type: Option<String>) -> Result<MemoryEntry> {
+    pub async fn store(
+        &self,
+        key: String,
+        value: String,
+        entry_type: Option<String>,
+    ) -> Result<MemoryEntry> {
         let now = chrono::Utc::now().to_rfc3339();
-        
+
         let entry = MemoryEntry {
             key: key.clone(),
             value,
@@ -93,7 +98,7 @@ impl MemoryService {
 
         self.save().await?;
         info!("Stored memory entry: {}", entry.key);
-        
+
         Ok(entry)
     }
 
@@ -106,12 +111,11 @@ impl MemoryService {
     /// List all memory entries.
     pub async fn list(&self, entry_type: Option<&str>) -> Vec<MemoryEntry> {
         let store = self.store.read().await;
-        
-        store.entries
+
+        store
+            .entries
             .values()
-            .filter(|e| {
-                entry_type.map_or(true, |t| e.entry_type == t)
-            })
+            .filter(|e| entry_type.map_or(true, |t| e.entry_type == t))
             .cloned()
             .collect()
     }
@@ -142,7 +146,7 @@ impl MemoryService {
 
         self.save().await?;
         info!("Cleared {} memory entries", count);
-        
+
         Ok(count)
     }
 
@@ -151,7 +155,8 @@ impl MemoryService {
         let store = self.store.read().await;
         let query_lower = query.to_lowercase();
 
-        store.entries
+        store
+            .entries
             .values()
             .filter(|e| {
                 e.key.to_lowercase().contains(&query_lower)
@@ -177,11 +182,14 @@ mod tests {
     async fn test_store_and_retrieve() {
         let (service, _temp) = create_test_service().await;
 
-        let entry = service.store(
-            "test-key".to_string(),
-            "test-value".to_string(),
-            Some("test-type".to_string()),
-        ).await.unwrap();
+        let entry = service
+            .store(
+                "test-key".to_string(),
+                "test-value".to_string(),
+                Some("test-type".to_string()),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(entry.key, "test-key");
         assert_eq!(entry.value, "test-value");
@@ -202,8 +210,14 @@ mod tests {
     async fn test_list_all() {
         let (service, _temp) = create_test_service().await;
 
-        service.store("key1".to_string(), "value1".to_string(), None).await.unwrap();
-        service.store("key2".to_string(), "value2".to_string(), None).await.unwrap();
+        service
+            .store("key1".to_string(), "value1".to_string(), None)
+            .await
+            .unwrap();
+        service
+            .store("key2".to_string(), "value2".to_string(), None)
+            .await
+            .unwrap();
 
         let all = service.list(None).await;
         assert_eq!(all.len(), 2);
@@ -213,9 +227,30 @@ mod tests {
     async fn test_list_by_type() {
         let (service, _temp) = create_test_service().await;
 
-        service.store("key1".to_string(), "value1".to_string(), Some("type-a".to_string())).await.unwrap();
-        service.store("key2".to_string(), "value2".to_string(), Some("type-b".to_string())).await.unwrap();
-        service.store("key3".to_string(), "value3".to_string(), Some("type-a".to_string())).await.unwrap();
+        service
+            .store(
+                "key1".to_string(),
+                "value1".to_string(),
+                Some("type-a".to_string()),
+            )
+            .await
+            .unwrap();
+        service
+            .store(
+                "key2".to_string(),
+                "value2".to_string(),
+                Some("type-b".to_string()),
+            )
+            .await
+            .unwrap();
+        service
+            .store(
+                "key3".to_string(),
+                "value3".to_string(),
+                Some("type-a".to_string()),
+            )
+            .await
+            .unwrap();
 
         let type_a = service.list(Some("type-a")).await;
         assert_eq!(type_a.len(), 2);
@@ -228,7 +263,10 @@ mod tests {
     async fn test_delete() {
         let (service, _temp) = create_test_service().await;
 
-        service.store("to-delete".to_string(), "value".to_string(), None).await.unwrap();
+        service
+            .store("to-delete".to_string(), "value".to_string(), None)
+            .await
+            .unwrap();
         assert!(service.retrieve("to-delete").await.is_some());
 
         let deleted = service.delete("to-delete").await.unwrap();
@@ -247,8 +285,14 @@ mod tests {
     async fn test_clear() {
         let (service, _temp) = create_test_service().await;
 
-        service.store("key1".to_string(), "value1".to_string(), None).await.unwrap();
-        service.store("key2".to_string(), "value2".to_string(), None).await.unwrap();
+        service
+            .store("key1".to_string(), "value1".to_string(), None)
+            .await
+            .unwrap();
+        service
+            .store("key2".to_string(), "value2".to_string(), None)
+            .await
+            .unwrap();
 
         let cleared = service.clear().await.unwrap();
         assert_eq!(cleared, 2);
@@ -261,9 +305,26 @@ mod tests {
     async fn test_search() {
         let (service, _temp) = create_test_service().await;
 
-        service.store("config".to_string(), "database connection string".to_string(), None).await.unwrap();
-        service.store("note".to_string(), "remember to check database".to_string(), None).await.unwrap();
-        service.store("other".to_string(), "unrelated content".to_string(), None).await.unwrap();
+        service
+            .store(
+                "config".to_string(),
+                "database connection string".to_string(),
+                None,
+            )
+            .await
+            .unwrap();
+        service
+            .store(
+                "note".to_string(),
+                "remember to check database".to_string(),
+                None,
+            )
+            .await
+            .unwrap();
+        service
+            .store("other".to_string(), "unrelated content".to_string(), None)
+            .await
+            .unwrap();
 
         let results = service.search("database").await;
         assert_eq!(results.len(), 2);
@@ -276,7 +337,10 @@ mod tests {
     async fn test_default_entry_type() {
         let (service, _temp) = create_test_service().await;
 
-        let entry = service.store("key".to_string(), "value".to_string(), None).await.unwrap();
+        let entry = service
+            .store("key".to_string(), "value".to_string(), None)
+            .await
+            .unwrap();
         assert_eq!(entry.entry_type, "general");
     }
 
@@ -287,7 +351,10 @@ mod tests {
         // Create and populate
         {
             let service = MemoryService::new(temp_dir.path()).await.unwrap();
-            service.store("persistent".to_string(), "data".to_string(), None).await.unwrap();
+            service
+                .store("persistent".to_string(), "data".to_string(), None)
+                .await
+                .unwrap();
         }
 
         // Reload and verify

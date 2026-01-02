@@ -149,7 +149,7 @@ impl ReactiveReviewManager {
     /// Get session statistics.
     pub async fn get_stats(&self) -> SessionStats {
         let sessions = self.sessions.read().await;
-        
+
         let mut stats = SessionStats::default();
         for session in sessions.values() {
             match session.status {
@@ -161,7 +161,7 @@ impl ReactiveReviewManager {
             stats.total_reviews += session.reviews.len();
         }
         stats.total_sessions = sessions.len();
-        
+
         stats
     }
 }
@@ -278,6 +278,9 @@ mod tests {
         };
 
         assert_eq!(session.metadata.len(), 2);
-        assert_eq!(session.metadata.get("pr_number").unwrap(), &serde_json::json!(123));
+        assert_eq!(
+            session.metadata.get("pr_number").unwrap(),
+            &serde_json::json!(123)
+        );
     }
 }

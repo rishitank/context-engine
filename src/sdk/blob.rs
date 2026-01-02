@@ -37,7 +37,12 @@ impl BlobNameCalculator {
     /// Calculate the blob name (SHA256 hash) for a file.
     ///
     /// Returns an error if the file exceeds the maximum size.
-    pub fn calculate_or_throw(&self, path: &str, contents: &[u8], check_size: bool) -> Result<String> {
+    pub fn calculate_or_throw(
+        &self,
+        path: &str,
+        contents: &[u8],
+        check_size: bool,
+    ) -> Result<String> {
         if check_size && contents.len() > self.max_blob_size {
             return Err(Error::BlobTooLarge {
                 max_size: self.max_blob_size,
@@ -91,7 +96,7 @@ mod tests {
     fn test_blob_name_calculation() {
         let calc = BlobNameCalculator::default();
         let name = calc.calculate("src/main.rs", b"fn main() {}").unwrap();
-        
+
         // Should be a 64-character hex string (SHA256)
         assert_eq!(name.len(), 64);
         assert!(name.chars().all(|c| c.is_ascii_hexdigit()));
@@ -102,7 +107,7 @@ mod tests {
         let calc = BlobNameCalculator::default();
         let name1 = calc.calculate("test.txt", b"hello").unwrap();
         let name2 = calc.calculate("test.txt", b"hello").unwrap();
-        
+
         // Same input should produce same output
         assert_eq!(name1, name2);
     }
@@ -112,7 +117,7 @@ mod tests {
         let calc = BlobNameCalculator::default();
         let name1 = calc.calculate("a.txt", b"hello").unwrap();
         let name2 = calc.calculate("b.txt", b"hello").unwrap();
-        
+
         // Different paths should produce different hashes
         assert_ne!(name1, name2);
     }
@@ -121,7 +126,7 @@ mod tests {
     fn test_blob_too_large() {
         let calc = BlobNameCalculator::new(10);
         let result = calc.calculate("test.txt", b"this is more than 10 bytes");
-        
+
         assert!(result.is_none());
     }
 
@@ -129,9 +134,8 @@ mod tests {
     fn test_blob_no_throw() {
         let calc = BlobNameCalculator::new(10);
         let name = calc.calculate_no_throw("test.txt", b"this is more than 10 bytes");
-        
+
         // Should still produce a hash
         assert_eq!(name.len(), 64);
     }
 }
-

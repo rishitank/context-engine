@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::error::Result;
-use crate::mcp::handler::{error_result, get_optional_string_arg, get_string_arg, success_result, ToolHandler};
+use crate::mcp::handler::{
+    error_result, get_optional_string_arg, get_string_arg, success_result, ToolHandler,
+};
 use crate::mcp::protocol::{Tool, ToolResult};
 use crate::service::MemoryService;
 
@@ -26,7 +28,8 @@ impl ToolHandler for StoreMemoryTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "add_memory".to_string(),
-            description: "Store a piece of information in persistent memory for later retrieval.".to_string(),
+            description: "Store a piece of information in persistent memory for later retrieval."
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -181,4 +184,3 @@ impl ToolHandler for DeleteMemoryTool {
         }
     }
 }
-

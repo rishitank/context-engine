@@ -198,4 +198,3 @@ pub struct ChatStreamEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub done: Option<bool>,
 }
-

@@ -109,9 +109,12 @@ pub fn get_string_arg(args: &HashMap<String, Value>, name: &str) -> Result<Strin
     args.get(name)
         .and_then(|v| v.as_str())
         .map(String::from)
-        .ok_or_else(|| crate::error::Error::InvalidToolArguments(
-            format!("Missing required argument: {}", name)
-        ))
+        .ok_or_else(|| {
+            crate::error::Error::InvalidToolArguments(format!(
+                "Missing required argument: {}",
+                name
+            ))
+        })
 }
 
 /// Helper to extract an optional string argument.
@@ -121,18 +124,14 @@ pub fn get_optional_string_arg(args: &HashMap<String, Value>, name: &str) -> Opt
 
 /// Helper to extract a required integer argument.
 pub fn get_int_arg(args: &HashMap<String, Value>, name: &str) -> Result<i64> {
-    args.get(name)
-        .and_then(|v| v.as_i64())
-        .ok_or_else(|| crate::error::Error::InvalidToolArguments(
-            format!("Missing required argument: {}", name)
-        ))
+    args.get(name).and_then(|v| v.as_i64()).ok_or_else(|| {
+        crate::error::Error::InvalidToolArguments(format!("Missing required argument: {}", name))
+    })
 }
 
 /// Helper to extract a required boolean argument.
 pub fn get_bool_arg(args: &HashMap<String, Value>, name: &str, default: bool) -> bool {
-    args.get(name)
-        .and_then(|v| v.as_bool())
-        .unwrap_or(default)
+    args.get(name).and_then(|v| v.as_bool()).unwrap_or(default)
 }
 
 /// Helper to extract a string array argument.
@@ -173,14 +172,19 @@ mod tests {
 
         async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
             let input = get_optional_string_arg(&args, "input").unwrap_or_default();
-            Ok(success_result(format!("Executed {} with: {}", self.name, input)))
+            Ok(success_result(format!(
+                "Executed {} with: {}",
+                self.name, input
+            )))
         }
     }
 
     #[test]
     fn test_handler_registration() {
         let mut handler = McpHandler::new();
-        handler.register(TestTool { name: "test_tool".to_string() });
+        handler.register(TestTool {
+            name: "test_tool".to_string(),
+        });
 
         assert_eq!(handler.tool_count(), 1);
         assert!(handler.has_tool("test_tool"));
@@ -190,8 +194,12 @@ mod tests {
     #[test]
     fn test_handler_list_tools() {
         let mut handler = McpHandler::new();
-        handler.register(TestTool { name: "tool_a".to_string() });
-        handler.register(TestTool { name: "tool_b".to_string() });
+        handler.register(TestTool {
+            name: "tool_a".to_string(),
+        });
+        handler.register(TestTool {
+            name: "tool_b".to_string(),
+        });
 
         let tools = handler.list_tools();
         assert_eq!(tools.len(), 2);
@@ -204,7 +212,9 @@ mod tests {
     #[tokio::test]
     async fn test_tool_execution() {
         let mut handler = McpHandler::new();
-        handler.register(TestTool { name: "echo".to_string() });
+        handler.register(TestTool {
+            name: "echo".to_string(),
+        });
 
         let tool = handler.get_tool("echo").unwrap();
         let mut args = HashMap::new();
@@ -234,7 +244,10 @@ mod tests {
         let mut args = HashMap::new();
         args.insert("name".to_string(), json!("value"));
 
-        assert_eq!(get_optional_string_arg(&args, "name"), Some("value".to_string()));
+        assert_eq!(
+            get_optional_string_arg(&args, "name"),
+            Some("value".to_string())
+        );
         assert_eq!(get_optional_string_arg(&args, "missing"), None);
     }
 

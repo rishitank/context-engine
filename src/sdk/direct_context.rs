@@ -36,17 +36,10 @@ pub struct DirectContext {
 impl DirectContext {
     /// Create a new DirectContext with the given options.
     pub async fn create(options: DirectContextOptions) -> Result<Self> {
-        let credentials = resolve_credentials(
-            options.api_key.as_deref(),
-            options.api_url.as_deref(),
-        )
-        .await?;
+        let credentials =
+            resolve_credentials(options.api_key.as_deref(), options.api_url.as_deref()).await?;
 
-        let api_client = ApiClient::new(
-            credentials.api_url,
-            credentials.api_key,
-            options.debug,
-        )?;
+        let api_client = ApiClient::new(credentials.api_url, credentials.api_key, options.debug)?;
 
         let max_file_size = options.max_file_size.unwrap_or(DEFAULT_MAX_BLOB_SIZE);
         let blob_calculator = BlobNameCalculator::new(max_file_size);
@@ -71,7 +64,10 @@ impl DirectContext {
 
         for file in files {
             // Calculate blob name
-            let blob_name = match self.blob_calculator.calculate(&file.path, file.contents.as_bytes()) {
+            let blob_name = match self
+                .blob_calculator
+                .calculate(&file.path, file.contents.as_bytes())
+            {
                 Some(name) => name,
                 None => {
                     skipped += 1;
@@ -95,7 +91,9 @@ impl DirectContext {
                 blob_name: blob_name.clone(),
                 path: file.path.clone(),
             });
-            state.client_blob_map.insert(file.path.clone(), blob_name.clone());
+            state
+                .client_blob_map
+                .insert(file.path.clone(), blob_name.clone());
 
             // Prepare for upload
             let content_size = file.contents.len();
@@ -172,7 +170,7 @@ impl DirectContext {
     /// Create a checkpoint of the current state.
     async fn create_checkpoint(&self) -> Result<()> {
         let mut state = self.state.write().await;
-        
+
         if state.pending_added.is_empty() && state.pending_deleted.is_empty() {
             return Ok(());
         }
@@ -321,4 +319,3 @@ impl DirectContext {
         self.api_client.chat_stream(prompt, blobs).await
     }
 }
-

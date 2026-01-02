@@ -109,12 +109,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_from_options() {
-        let creds = resolve_credentials(
-            Some("test-key"),
-            Some("https://api.example.com"),
-        )
-        .await
-        .unwrap();
+        let creds = resolve_credentials(Some("test-key"), Some("https://api.example.com"))
+            .await
+            .unwrap();
 
         assert_eq!(creds.api_key, "test-key");
         assert_eq!(creds.api_url, "https://api.example.com");
@@ -127,7 +124,7 @@ mod tests {
         std::env::remove_var("AUGMENT_API_URL");
 
         let result = resolve_credentials(None, None).await;
-        
+
         // Should fail if no session file exists
         // (This test may pass if session file exists on the system)
         if result.is_err() {
@@ -135,4 +132,3 @@ mod tests {
         }
     }
 }
-

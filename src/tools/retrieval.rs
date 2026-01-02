@@ -7,7 +7,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::error::Result;
-use crate::mcp::handler::{error_result, get_optional_string_arg, get_string_arg, success_result, ToolHandler};
+use crate::mcp::handler::{
+    error_result, get_optional_string_arg, get_string_arg, success_result, ToolHandler,
+};
 use crate::mcp::protocol::{Tool, ToolResult};
 use crate::service::ContextService;
 
@@ -94,7 +96,10 @@ impl ToolHandler for CodebaseRetrievalTool {
 
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let query = get_string_arg(&args, "information_request")?;
-        let max_tokens = args.get("max_tokens").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let max_tokens = args
+            .get("max_tokens")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
 
         match self.service.search(&query, max_tokens).await {
             Ok(result) => Ok(success_result(result)),
@@ -119,7 +124,9 @@ impl ToolHandler for SearchCodeTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "semantic_search".to_string(),
-            description: "Search for code patterns, functions, classes, or specific text in the codebase.".to_string(),
+            description:
+                "Search for code patterns, functions, classes, or specific text in the codebase."
+                    .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -144,7 +151,10 @@ impl ToolHandler for SearchCodeTool {
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let query = get_string_arg(&args, "query")?;
         let _file_pattern = get_optional_string_arg(&args, "file_pattern");
-        let max_results = args.get("max_results").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
 
         // Use semantic search with optional token limit
         let max_tokens = max_results.map(|r| r * 500); // Rough estimate
@@ -172,7 +182,8 @@ impl ToolHandler for GetFileTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "get_file".to_string(),
-            description: "Retrieve complete or partial contents of a file from the codebase.".to_string(),
+            description: "Retrieve complete or partial contents of a file from the codebase."
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -196,15 +207,25 @@ impl ToolHandler for GetFileTool {
 
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let path = get_string_arg(&args, "path")?;
-        let start_line = args.get("start_line").and_then(|v| v.as_u64()).map(|v| v as usize);
-        let end_line = args.get("end_line").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let start_line = args
+            .get("start_line")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let end_line = args
+            .get("end_line")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
 
         // Validate path
         if path.is_empty() {
-            return Ok(error_result("Invalid path: must be a non-empty string".to_string()));
+            return Ok(error_result(
+                "Invalid path: must be a non-empty string".to_string(),
+            ));
         }
         if path.len() > 500 {
-            return Ok(error_result("Path too long: maximum 500 characters".to_string()));
+            return Ok(error_result(
+                "Path too long: maximum 500 characters".to_string(),
+            ));
         }
 
         // Read file
@@ -241,7 +262,12 @@ impl ToolHandler for GetFileTool {
             }
 
             let selected: Vec<&str> = all_lines[start..end.min(total_lines)].to_vec();
-            let line_info = format!("Lines {}-{} of {}", start + 1, end.min(total_lines), total_lines);
+            let line_info = format!(
+                "Lines {}-{} of {}",
+                start + 1,
+                end.min(total_lines),
+                total_lines
+            );
             (selected.join("\n"), line_info)
         } else {
             (content.clone(), format!("{} lines", total_lines))
@@ -316,14 +342,20 @@ impl ToolHandler for GetContextTool {
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let query = get_string_arg(&args, "query")?;
         let max_files = args.get("max_files").and_then(|v| v.as_u64()).unwrap_or(5) as usize;
-        let token_budget = args.get("token_budget").and_then(|v| v.as_u64()).unwrap_or(8000) as usize;
+        let token_budget = args
+            .get("token_budget")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(8000) as usize;
 
         // Perform semantic search
         match self.service.search(&query, Some(token_budget)).await {
             Ok(result) => {
                 let mut output = format!("# 📚 Codebase Context\n\n");
                 output.push_str(&format!("**Query:** \"{}\"\n\n", query));
-                output.push_str(&format!("**Settings:** max_files={}, token_budget={}\n\n", max_files, token_budget));
+                output.push_str(&format!(
+                    "**Settings:** max_files={}, token_budget={}\n\n",
+                    max_files, token_budget
+                ));
                 output.push_str("## Results\n\n");
                 output.push_str(&result);
                 Ok(success_result(output))
@@ -367,7 +399,9 @@ impl ToolHandler for EnhancePromptTool {
         let prompt = get_string_arg(&args, "prompt")?;
 
         if prompt.len() > 10000 {
-            return Ok(error_result("Prompt too long: maximum 10000 characters".to_string()));
+            return Ok(error_result(
+                "Prompt too long: maximum 10000 characters".to_string(),
+            ));
         }
 
         // Use AI to enhance the prompt with codebase context
@@ -398,7 +432,8 @@ impl ToolHandler for ToolManifestTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "tool_manifest".to_string(),
-            description: "Discover available tools and capabilities exposed by the server.".to_string(),
+            description: "Discover available tools and capabilities exposed by the server."
+                .to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {},
@@ -468,4 +503,3 @@ impl ToolHandler for ToolManifestTool {
         Ok(success_result(serde_json::to_string_pretty(&manifest)?))
     }
 }
-

@@ -90,10 +90,7 @@ where
         match f().await {
             Ok(result) => {
                 if tries > 0 && enable_debug {
-                    debug!(
-                        "Operation succeeded after {} transient failures",
-                        tries
-                    );
+                    debug!("Operation succeeded after {} transient failures", tries);
                 }
                 return Ok(result);
             }
@@ -141,11 +138,7 @@ where
 }
 
 /// Retry with default retriable error check.
-pub async fn retry_api<F, Fut, T>(
-    f: F,
-    params: &BackoffParams,
-    debug: bool,
-) -> crate::Result<T>
+pub async fn retry_api<F, Fut, T>(f: F, params: &BackoffParams, debug: bool) -> crate::Result<T>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = crate::Result<T>>,
@@ -154,15 +147,10 @@ where
 }
 
 /// Retry with chat-specific retriable error check.
-pub async fn retry_chat<F, Fut, T>(
-    f: F,
-    params: &BackoffParams,
-    debug: bool,
-) -> crate::Result<T>
+pub async fn retry_chat<F, Fut, T>(f: F, params: &BackoffParams, debug: bool) -> crate::Result<T>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = crate::Result<T>>,
 {
     retry_with_backoff(f, |e: &Error| e.is_chat_retriable(), params, debug).await
 }
-

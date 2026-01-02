@@ -27,7 +27,7 @@ impl PlanningService {
     /// Create a new planning service.
     pub async fn new(workspace: &Path) -> Result<Self> {
         let storage_path = workspace.join(".context-engine").join("plans.json");
-        
+
         // Create directory if needed
         if let Some(parent) = storage_path.parent() {
             fs::create_dir_all(parent).await?;
@@ -81,7 +81,7 @@ impl PlanningService {
 
         self.save().await?;
         info!("Created plan: {}", id);
-        
+
         Ok(plan)
     }
 
@@ -94,8 +94,9 @@ impl PlanningService {
     /// List all plans.
     pub async fn list_plans(&self, status: Option<PlanStatus>) -> Vec<Plan> {
         let store = self.store.read().await;
-        
-        store.plans
+
+        store
+            .plans
             .values()
             .filter(|p| status.map_or(true, |s| p.status == s))
             .cloned()
@@ -105,16 +106,18 @@ impl PlanningService {
     /// Add a step to a plan.
     pub async fn add_step(&self, plan_id: &str, step: Step) -> Result<Plan> {
         let mut store = self.store.write().await;
-        
-        let plan = store.plans.get_mut(plan_id)
+
+        let plan = store
+            .plans
+            .get_mut(plan_id)
             .ok_or_else(|| Error::PlanNotFound(plan_id.to_string()))?;
 
         plan.steps.push(step);
         plan.updated_at = chrono::Utc::now().to_rfc3339();
-        
+
         let plan = plan.clone();
         drop(store);
-        
+
         self.save().await?;
         Ok(plan)
     }
@@ -127,11 +130,15 @@ impl PlanningService {
         status: StepStatus,
     ) -> Result<Plan> {
         let mut store = self.store.write().await;
-        
-        let plan = store.plans.get_mut(plan_id)
+
+        let plan = store
+            .plans
+            .get_mut(plan_id)
             .ok_or_else(|| Error::PlanNotFound(plan_id.to_string()))?;
 
-        let step = plan.steps.iter_mut()
+        let step = plan
+            .steps
+            .iter_mut()
             .find(|s| s.id == step_id)
             .ok_or_else(|| Error::StepNotFound(step_id))?;
 
@@ -139,12 +146,12 @@ impl PlanningService {
         if status == StepStatus::Completed {
             step.completed_at = Some(chrono::Utc::now().to_rfc3339());
         }
-        
+
         plan.updated_at = chrono::Utc::now().to_rfc3339();
-        
+
         let plan = plan.clone();
         drop(store);
-        
+
         self.save().await?;
         Ok(plan)
     }
@@ -180,10 +187,13 @@ mod tests {
     async fn test_create_plan() {
         let (service, _temp) = create_test_service().await;
 
-        let plan = service.create_plan(
-            "Test Plan".to_string(),
-            "A test plan description".to_string(),
-        ).await.unwrap();
+        let plan = service
+            .create_plan(
+                "Test Plan".to_string(),
+                "A test plan description".to_string(),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(plan.title, "Test Plan");
         assert_eq!(plan.description, "A test plan description");
@@ -195,7 +205,10 @@ mod tests {
     async fn test_get_plan() {
         let (service, _temp) = create_test_service().await;
 
-        let created = service.create_plan("Test".to_string(), "Desc".to_string()).await.unwrap();
+        let created = service
+            .create_plan("Test".to_string(), "Desc".to_string())
+            .await
+            .unwrap();
         let retrieved = service.get_plan(&created.id).await.unwrap();
 
         assert_eq!(retrieved.id, created.id);
@@ -213,8 +226,14 @@ mod tests {
     async fn test_list_plans() {
         let (service, _temp) = create_test_service().await;
 
-        service.create_plan("Plan 1".to_string(), "Desc 1".to_string()).await.unwrap();
-        service.create_plan("Plan 2".to_string(), "Desc 2".to_string()).await.unwrap();
+        service
+            .create_plan("Plan 1".to_string(), "Desc 1".to_string())
+            .await
+            .unwrap();
+        service
+            .create_plan("Plan 2".to_string(), "Desc 2".to_string())
+            .await
+            .unwrap();
 
         let plans = service.list_plans(None).await;
         assert_eq!(plans.len(), 2);
@@ -224,8 +243,14 @@ mod tests {
     async fn test_list_plans_by_status() {
         let (service, _temp) = create_test_service().await;
 
-        service.create_plan("Plan 1".to_string(), "Desc 1".to_string()).await.unwrap();
-        service.create_plan("Plan 2".to_string(), "Desc 2".to_string()).await.unwrap();
+        service
+            .create_plan("Plan 1".to_string(), "Desc 1".to_string())
+            .await
+            .unwrap();
+        service
+            .create_plan("Plan 2".to_string(), "Desc 2".to_string())
+            .await
+            .unwrap();
 
         let drafts = service.list_plans(Some(PlanStatus::Draft)).await;
         assert_eq!(drafts.len(), 2);
@@ -238,7 +263,10 @@ mod tests {
     async fn test_add_step() {
         let (service, _temp) = create_test_service().await;
 
-        let plan = service.create_plan("Test".to_string(), "Desc".to_string()).await.unwrap();
+        let plan = service
+            .create_plan("Test".to_string(), "Desc".to_string())
+            .await
+            .unwrap();
 
         let step = Step {
             id: 1,
@@ -268,7 +296,10 @@ mod tests {
     async fn test_update_step_status() {
         let (service, _temp) = create_test_service().await;
 
-        let plan = service.create_plan("Test".to_string(), "Desc".to_string()).await.unwrap();
+        let plan = service
+            .create_plan("Test".to_string(), "Desc".to_string())
+            .await
+            .unwrap();
 
         let step = Step {
             id: 1,
@@ -291,10 +322,16 @@ mod tests {
 
         service.add_step(&plan.id, step).await.unwrap();
 
-        let updated = service.update_step_status(&plan.id, 1, StepStatus::InProgress).await.unwrap();
+        let updated = service
+            .update_step_status(&plan.id, 1, StepStatus::InProgress)
+            .await
+            .unwrap();
         assert_eq!(updated.steps[0].status, StepStatus::InProgress);
 
-        let completed = service.update_step_status(&plan.id, 1, StepStatus::Completed).await.unwrap();
+        let completed = service
+            .update_step_status(&plan.id, 1, StepStatus::Completed)
+            .await
+            .unwrap();
         assert_eq!(completed.steps[0].status, StepStatus::Completed);
         assert!(completed.steps[0].completed_at.is_some());
     }
@@ -303,7 +340,10 @@ mod tests {
     async fn test_delete_plan() {
         let (service, _temp) = create_test_service().await;
 
-        let plan = service.create_plan("Test".to_string(), "Desc".to_string()).await.unwrap();
+        let plan = service
+            .create_plan("Test".to_string(), "Desc".to_string())
+            .await
+            .unwrap();
         assert!(service.get_plan(&plan.id).await.is_some());
 
         let deleted = service.delete_plan(&plan.id).await.unwrap();
@@ -325,7 +365,10 @@ mod tests {
         // Create and populate
         let plan_id = {
             let service = PlanningService::new(temp_dir.path()).await.unwrap();
-            let plan = service.create_plan("Persistent".to_string(), "Test".to_string()).await.unwrap();
+            let plan = service
+                .create_plan("Persistent".to_string(), "Test".to_string())
+                .await
+                .unwrap();
             plan.id
         };
 

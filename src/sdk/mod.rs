@@ -24,4 +24,3 @@ pub use blob::BlobNameCalculator;
 pub use credentials::{resolve_credentials, Credentials};
 pub use direct_context::DirectContext;
 pub use types::*;
-

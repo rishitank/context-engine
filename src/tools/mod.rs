@@ -27,7 +27,9 @@ pub fn register_all_tools(
     planning_service: Arc<PlanningService>,
 ) {
     // Retrieval tools (6)
-    handler.register(retrieval::CodebaseRetrievalTool::new(context_service.clone()));
+    handler.register(retrieval::CodebaseRetrievalTool::new(
+        context_service.clone(),
+    ));
     handler.register(retrieval::SearchCodeTool::new(context_service.clone()));
     handler.register(retrieval::GetFileTool::new(context_service.clone()));
     handler.register(retrieval::GetContextTool::new(context_service.clone()));
@@ -66,7 +68,9 @@ pub fn register_all_tools(
     handler.register(planning::ViewHistoryTool::new(planning_service.clone()));
     handler.register(planning::RequestApprovalTool::new(planning_service.clone()));
     handler.register(planning::RespondApprovalTool::new(planning_service.clone()));
-    handler.register(planning::ComparePlanVersionsTool::new(planning_service.clone()));
+    handler.register(planning::ComparePlanVersionsTool::new(
+        planning_service.clone(),
+    ));
     handler.register(planning::RollbackPlanTool::new(planning_service.clone()));
 
     // Review tools (14)

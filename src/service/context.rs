@@ -66,7 +66,7 @@ impl ContextService {
     pub async fn new(config: &Config) -> Result<Self> {
         let workspace = config.workspace.clone();
         let config = config.clone();
-        
+
         // Initialize ignore patterns
         let mut ignore_patterns: HashSet<String> = DEFAULT_IGNORE_PATTERNS
             .iter()
@@ -98,7 +98,7 @@ impl ContextService {
     /// Initialize the context (lazy initialization).
     pub async fn initialize(&self) -> Result<()> {
         let mut context_guard = self.context.write().await;
-        
+
         if context_guard.is_some() {
             return Ok(());
         }
@@ -113,7 +113,10 @@ impl ContextService {
         let context = DirectContext::create(options).await?;
         *context_guard = Some(context);
 
-        info!("Context service initialized for workspace: {:?}", self.workspace);
+        info!(
+            "Context service initialized for workspace: {:?}",
+            self.workspace
+        );
         Ok(())
     }
 
@@ -131,7 +134,7 @@ impl ContextService {
     pub async fn status(&self) -> IndexStatus {
         let state = self.state.read().await;
         let context = self.context.read().await;
-        
+
         let file_count = if let Some(ctx) = context.as_ref() {
             ctx.file_count().await
         } else {
@@ -151,7 +154,7 @@ impl ContextService {
     /// Check if a path should be ignored.
     fn should_ignore(&self, path: &Path) -> bool {
         let path_str = path.to_string_lossy();
-        
+
         for pattern in &self.ignore_patterns {
             if pattern.contains('*') {
                 // Simple glob matching
@@ -163,7 +166,7 @@ impl ContextService {
                 return true;
             }
         }
-        
+
         false
     }
 
@@ -210,7 +213,8 @@ impl ContextService {
         let mut batch: Vec<crate::types::File> = Vec::with_capacity(BATCH_SIZE);
 
         for file_path in files {
-            let relative_path = file_path.strip_prefix(&self.workspace)
+            let relative_path = file_path
+                .strip_prefix(&self.workspace)
                 .unwrap_or(&file_path)
                 .to_string_lossy()
                 .to_string();
@@ -219,7 +223,11 @@ impl ContextService {
                 Ok(contents) => {
                     // Check file size
                     if contents.len() > self.config.max_file_size {
-                        debug!("Skipping large file: {} ({} bytes)", relative_path, contents.len());
+                        debug!(
+                            "Skipping large file: {} ({} bytes)",
+                            relative_path,
+                            contents.len()
+                        );
                         skipped += 1;
                         continue;
                     }
@@ -276,7 +284,10 @@ impl ContextService {
             state.last_indexed = Some(chrono::Utc::now().to_rfc3339());
         }
 
-        info!("Indexing complete: {} indexed, {} skipped in {}ms", indexed, skipped, duration);
+        info!(
+            "Indexing complete: {} indexed, {} skipped in {}ms",
+            indexed, skipped, duration
+        );
 
         Ok(crate::types::IndexResult {
             indexed,
@@ -302,8 +313,7 @@ impl ContextService {
 
             while let Ok(Some(entry)) = entries.next_entry().await {
                 let path = entry.path();
-                let relative = path.strip_prefix(&self.workspace)
-                    .unwrap_or(&path);
+                let relative = path.strip_prefix(&self.workspace).unwrap_or(&path);
 
                 // Check if should be ignored
                 if self.should_ignore(relative) {
@@ -328,14 +338,70 @@ impl ContextService {
     /// Check if a file should be indexed based on its extension.
     fn should_index_file(&self, path: &Path) -> bool {
         const INDEXABLE_EXTENSIONS: &[&str] = &[
-            "rs", "py", "js", "ts", "jsx", "tsx", "go", "java", "c", "cpp", "h", "hpp",
-            "rb", "php", "swift", "kt", "scala", "cs", "fs", "clj", "ex", "exs",
-            "hs", "ml", "mli", "lua", "r", "jl", "dart", "v", "sv", "vhd",
-            "sql", "sh", "bash", "zsh", "fish", "ps1", "bat", "cmd",
-            "html", "css", "scss", "sass", "less", "vue", "svelte",
-            "json", "yaml", "yml", "toml", "xml", "md", "txt", "rst",
-            "dockerfile", "makefile", "cmake", "gradle", "sbt",
-            "tf", "hcl", "nix", "dhall",
+            "rs",
+            "py",
+            "js",
+            "ts",
+            "jsx",
+            "tsx",
+            "go",
+            "java",
+            "c",
+            "cpp",
+            "h",
+            "hpp",
+            "rb",
+            "php",
+            "swift",
+            "kt",
+            "scala",
+            "cs",
+            "fs",
+            "clj",
+            "ex",
+            "exs",
+            "hs",
+            "ml",
+            "mli",
+            "lua",
+            "r",
+            "jl",
+            "dart",
+            "v",
+            "sv",
+            "vhd",
+            "sql",
+            "sh",
+            "bash",
+            "zsh",
+            "fish",
+            "ps1",
+            "bat",
+            "cmd",
+            "html",
+            "css",
+            "scss",
+            "sass",
+            "less",
+            "vue",
+            "svelte",
+            "json",
+            "yaml",
+            "yml",
+            "toml",
+            "xml",
+            "md",
+            "txt",
+            "rst",
+            "dockerfile",
+            "makefile",
+            "cmake",
+            "gradle",
+            "sbt",
+            "tf",
+            "hcl",
+            "nix",
+            "dhall",
         ];
 
         if let Some(ext) = path.extension() {
@@ -346,9 +412,15 @@ impl ContextService {
         // Check for extensionless files that should be indexed
         if let Some(name) = path.file_name() {
             let name_lower = name.to_string_lossy().to_lowercase();
-            return matches!(name_lower.as_str(),
-                "dockerfile" | "makefile" | "rakefile" | "gemfile" |
-                "brewfile" | ".gitignore" | ".dockerignore"
+            return matches!(
+                name_lower.as_str(),
+                "dockerfile"
+                    | "makefile"
+                    | "rakefile"
+                    | "gemfile"
+                    | "brewfile"
+                    | ".gitignore"
+                    | ".dockerignore"
             );
         }
 
@@ -398,4 +470,3 @@ Enhanced prompt:"#,
         ctx.chat(&enhancement_prompt).await
     }
 }
-
