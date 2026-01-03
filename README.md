@@ -18,10 +18,10 @@ Context Engine provides semantic code search and AI-powered context retrieval fo
 | Metric | Value |
 |--------|-------|
 | **Binary Size** | ~7 MB (optimized ARM64) |
-| **Lines of Code** | ~9,500 Rust |
-| **Unit Tests** | 170 tests |
+| **Lines of Code** | ~10,500 Rust |
+| **Unit Tests** | 190 tests |
 | **Integration Tests** | 11 tests |
-| **MCP Tools** | 60 tools |
+| **MCP Tools** | 73 tools |
 | **Supported Languages** | 18+ (symbol detection) |
 | **Startup Time** | <10ms |
 | **Memory Usage** | ~20 MB idle |
@@ -74,7 +74,7 @@ Credentials are resolved in order:
 2. Environment variables
 3. Session file (`~/.augment/session.json`)
 
-## MCP Tools (60 Total)
+## MCP Tools (73 Total)
 
 ### Retrieval Tools (7)
 | Tool | Description |
@@ -96,13 +96,15 @@ Credentials are resolved in order:
 | `clear_index` | Remove index state |
 | `refresh_index` | Refresh the codebase index |
 
-### Memory Tools (4)
+### Memory Tools (6)
 | Tool | Description |
 |------|-------------|
 | `store_memory` | Store persistent memories |
 | `retrieve_memory` | Recall stored memories |
 | `list_memory` | List all memories |
 | `delete_memory` | Delete a memory |
+| `memory_store` | Store with rich metadata (kind, language, tags, priority) |
+| `memory_find` | Hybrid search with filtering |
 
 ### Planning Tools (20)
 | Tool | Description |
@@ -163,6 +165,17 @@ Credentials are resolved in order:
 | `git_log` | Get git commit history |
 | `dependency_graph` | Generate dependency graph |
 | `file_outline` | Get file structure outline |
+
+### Specialized Search Tools (7)
+| Tool | Description |
+|------|-------------|
+| `search_tests_for` | Find test files with preset patterns |
+| `search_config_for` | Find config files (yaml/json/toml/ini/env) |
+| `search_callers_for` | Find callers/usages of a symbol |
+| `search_importers_for` | Find files importing a module |
+| `info_request` | Simplified retrieval with explanation mode |
+| `pattern_search` | Structural code pattern matching |
+| `context_search` | Context-aware semantic search |
 
 ## Architecture
 
