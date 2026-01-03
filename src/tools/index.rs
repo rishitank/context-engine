@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use crate::error::Result;
 use crate::mcp::handler::{error_result, success_result, ToolHandler};
-use crate::mcp::protocol::{Tool, ToolResult};
+use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::service::ContextService;
 
 /// Index workspace tool.
@@ -60,6 +60,8 @@ that enables fast, meaning-based code search.
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::additive().with_title("Index Workspace")),
+            ..Default::default()
         }
     }
 
@@ -133,6 +135,8 @@ impl ToolHandler for IndexStatusTool {
                 "properties": {},
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Index Status")),
+            ..Default::default()
         }
     }
 
@@ -165,6 +169,8 @@ impl ToolHandler for ReindexWorkspaceTool {
                 "properties": {},
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::destructive().with_title("Reindex Workspace")),
+            ..Default::default()
         }
     }
 
@@ -216,6 +222,8 @@ impl ToolHandler for ClearIndexTool {
                 "properties": {},
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::destructive().with_title("Clear Index")),
+            ..Default::default()
         }
     }
 
@@ -257,6 +265,8 @@ impl ToolHandler for RefreshIndexTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::idempotent().with_title("Refresh Index")),
+            ..Default::default()
         }
     }
 

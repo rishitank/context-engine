@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crate::mcp::handler::{error_result, get_string_arg, success_result, ToolHandler};
-use crate::mcp::protocol::{Tool, ToolResult};
+use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::service::ContextService;
 
 /// Review diff tool.
@@ -41,6 +41,8 @@ impl ToolHandler for ReviewDiffTool {
                 },
                 "required": ["diff"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Review Diff")),
+            ..Default::default()
         }
     }
 
@@ -100,6 +102,8 @@ impl ToolHandler for AnalyzeRiskTool {
                 },
                 "required": ["files", "change_description"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Analyze Risk")),
+            ..Default::default()
         }
     }
 
@@ -199,6 +203,8 @@ impl ToolHandler for ReviewChangesTool {
                 },
                 "required": ["files"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Review Changes")),
+            ..Default::default()
         }
     }
 
@@ -247,6 +253,8 @@ impl ToolHandler for ReviewGitDiffTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Review Git Diff")),
+            ..Default::default()
         }
     }
 
@@ -298,6 +306,8 @@ impl ToolHandler for ReviewAutoTool {
                 "properties": {},
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Auto Review")),
+            ..Default::default()
         }
     }
 
@@ -339,6 +349,8 @@ impl ToolHandler for CheckInvariantsTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Check Invariants")),
+            ..Default::default()
         }
     }
 
@@ -384,6 +396,8 @@ impl ToolHandler for RunStaticAnalysisTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Run Static Analysis")),
+            ..Default::default()
         }
     }
 
@@ -426,6 +440,8 @@ impl ToolHandler for ScrubSecretsTool {
                 },
                 "required": ["content"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Scrub Secrets")),
+            ..Default::default()
         }
     }
 
@@ -492,6 +508,8 @@ impl ToolHandler for ValidateContentTool {
                 },
                 "required": ["content"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Validate Content")),
+            ..Default::default()
         }
     }
 
@@ -536,6 +554,8 @@ impl ToolHandler for GetReviewStatusTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Get Review Status")),
+            ..Default::default()
         }
     }
 
@@ -576,6 +596,8 @@ impl ToolHandler for ReactiveReviewPRTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Reactive Review PR")),
+            ..Default::default()
         }
     }
 
@@ -618,6 +640,8 @@ impl ToolHandler for PauseReviewTool {
                 },
                 "required": ["session_id"]
             }),
+            annotations: Some(ToolAnnotations::idempotent().with_title("Pause Review")),
+            ..Default::default()
         }
     }
 
@@ -660,6 +684,8 @@ impl ToolHandler for ResumeReviewTool {
                 },
                 "required": ["session_id"]
             }),
+            annotations: Some(ToolAnnotations::idempotent().with_title("Resume Review")),
+            ..Default::default()
         }
     }
 
@@ -702,6 +728,8 @@ impl ToolHandler for GetReviewTelemetryTool {
                 },
                 "required": ["session_id"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Get Review Telemetry")),
+            ..Default::default()
         }
     }
 

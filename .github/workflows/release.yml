@@ -1,15 +1,162 @@
 name: Release
 
 on:
+  # Manual trigger with version input
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 2.0.2). Leave empty to auto-bump patch version.'
+        required: false
+        type: string
+      bump_type:
+        description: 'Version bump type (only used if version is empty)'
+        required: false
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      prerelease:
+        description: 'Is this a pre-release?'
+        required: false
+        type: boolean
+        default: false
+  # Triggered by tag push (manual releases)
   push:
     tags:
       - 'v*'
+  # Triggered after successful CI on main
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
+  # Check if release should proceed
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+      needs_bump: ${{ steps.check.outputs.needs_bump }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check release conditions
+        id: check
+        run: |
+          # Get current version from Cargo.toml
+          CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          # For workflow_dispatch
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.version }}" ]; then
+              # Explicit version provided
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+              if [ "${{ inputs.version }}" != "$CURRENT_VERSION" ]; then
+                echo "needs_bump=true" >> $GITHUB_OUTPUT
+              else
+                echo "needs_bump=false" >> $GITHUB_OUTPUT
+              fi
+            else
+              # Auto-bump version based on bump_type
+              IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+              case "${{ inputs.bump_type }}" in
+                major)
+                  NEW_VERSION="$((MAJOR + 1)).0.0"
+                  ;;
+                minor)
+                  NEW_VERSION="${MAJOR}.$((MINOR + 1)).0"
+                  ;;
+                patch|*)
+                  NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+                  ;;
+              esac
+              echo "Auto-bumped to: $NEW_VERSION"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+              echo "needs_bump=true" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
+
+          # For tag push, always release
+          if [ "${{ github.event_name }}" == "push" ] && [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+            echo "needs_bump=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # For workflow_run, check if CI succeeded and version changed
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "CI did not succeed, skipping release"
+              echo "should_release=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            # Check if this version tag already exists
+            if git tag -l "v$CURRENT_VERSION" | grep -q .; then
+              echo "Tag v$CURRENT_VERSION already exists, skipping release"
+              echo "should_release=false" >> $GITHUB_OUTPUT
+            else
+              echo "New version v$CURRENT_VERSION detected, will release"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+              echo "needs_bump=false" >> $GITHUB_OUTPUT
+            fi
+            exit 0
+          fi
+
+          echo "Unknown trigger, skipping release"
+          echo "should_release=false" >> $GITHUB_OUTPUT
+
+  # Bump version in Cargo.toml if needed
+  bump-version:
+    needs: check
+    if: needs.check.outputs.should_release == 'true' && needs.check.outputs.needs_bump == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Cargo.toml version
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          echo "Updating Cargo.toml to version $VERSION"
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
+          cat Cargo.toml | head -5
+
+      - name: Commit version bump
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml
+          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: [check, bump-version]
+    # Run if should_release is true, and either no bump needed OR bump-version succeeded
+    if: |
+      always() &&
+      needs.check.outputs.should_release == 'true' &&
+      (needs.check.outputs.needs_bump != 'true' || needs.bump-version.result == 'success')
     strategy:
       matrix:
         include:
@@ -26,6 +173,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          # Fetch latest to get version bump commit
+          fetch-depth: 0
+
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }} || true
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -45,25 +199,257 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
 
+  # Generate AI-powered changelog
+  changelog:
+    needs: [check, bump-version, build]
+    if: |
+      always() &&
+      needs.check.outputs.should_release == 'true' &&
+      needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      changelog: ${{ steps.generate.outputs.changelog }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }} || true
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          # Get the most recent tag before this release
+          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | head -2 | tail -1)
+          if [ -z "$PREV_TAG" ]; then
+            # No previous tag, use first commit
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "Previous tag: $PREV_TAG"
+
+      - name: Collect commits
+        id: commits
+        run: |
+          PREV_TAG="${{ steps.prev_tag.outputs.prev_tag }}"
+
+          # Get commits with conventional commit format parsing
+          echo "## Commits since $PREV_TAG" > commits.md
+          echo "" >> commits.md
+
+          # Group commits by type
+          git log "$PREV_TAG"..HEAD --pretty=format:"%s|%h|%an" | while IFS='|' read -r msg hash author; do
+            echo "$msg|$hash|$author"
+          done > raw_commits.txt
+
+          # Parse and categorize commits
+          echo "### ✨ Features" > features.md
+          echo "" >> features.md
+          echo "### 🐛 Bug Fixes" > fixes.md
+          echo "" >> fixes.md
+          echo "### 🔒 Security" > security.md
+          echo "" >> security.md
+          echo "### 📚 Documentation" > docs.md
+          echo "" >> docs.md
+          echo "### 🔧 Maintenance" > chores.md
+          echo "" >> chores.md
+          echo "### 🎨 Refactoring" > refactor.md
+          echo "" >> refactor.md
+          echo "### ⚡ Performance" > perf.md
+          echo "" >> perf.md
+          echo "### 🧪 Tests" > tests.md
+          echo "" >> tests.md
+          echo "### 📦 Other Changes" > other.md
+          echo "" >> other.md
+
+          while IFS='|' read -r msg hash author; do
+            # Extract type from conventional commit
+            if [[ "$msg" =~ ^feat(\(.+\))?:\ (.+) ]]; then
+              scope="${BASH_REMATCH[1]}"
+              desc="${BASH_REMATCH[2]}"
+              echo "- ${desc} (\`${hash}\`) - @${author}" >> features.md
+            elif [[ "$msg" =~ ^fix(\(.+\))?:\ (.+) ]]; then
+              scope="${BASH_REMATCH[1]}"
+              desc="${BASH_REMATCH[2]}"
+              echo "- ${desc} (\`${hash}\`) - @${author}" >> fixes.md
+            elif [[ "$msg" =~ ^security(\(.+\))?:\ (.+) ]]; then
+              scope="${BASH_REMATCH[1]}"
+              desc="${BASH_REMATCH[2]}"
+              echo "- ${desc} (\`${hash}\`) - @${author}" >> security.md
+            elif [[ "$msg" =~ ^docs?(\(.+\))?:\ (.+) ]]; then
+              scope="${BASH_REMATCH[1]}"
+              desc="${BASH_REMATCH[2]}"
+              echo "- ${desc} (\`${hash}\`) - @${author}" >> docs.md
+            elif [[ "$msg" =~ ^chore(\(.+\))?:\ (.+) ]]; then
+              scope="${BASH_REMATCH[1]}"
+              desc="${BASH_REMATCH[2]}"
+              echo "- ${desc} (\`${hash}\`) - @${author}" >> chores.md
+            elif [[ "$msg" =~ ^refactor(\(.+\))?:\ (.+) ]]; then
+              scope="${BASH_REMATCH[1]}"
+              desc="${BASH_REMATCH[2]}"
+              echo "- ${desc} (\`${hash}\`) - @${author}" >> refactor.md
+            elif [[ "$msg" =~ ^perf(\(.+\))?:\ (.+) ]]; then
+              scope="${BASH_REMATCH[1]}"
+              desc="${BASH_REMATCH[2]}"
+              echo "- ${desc} (\`${hash}\`) - @${author}" >> perf.md
+            elif [[ "$msg" =~ ^test(\(.+\))?:\ (.+) ]]; then
+              scope="${BASH_REMATCH[1]}"
+              desc="${BASH_REMATCH[2]}"
+              echo "- ${desc} (\`${hash}\`) - @${author}" >> tests.md
+            else
+              # Other commits
+              echo "- ${msg} (\`${hash}\`) - @${author}" >> other.md
+            fi
+          done < raw_commits.txt
+
+      - name: Generate changelog with AI
+        id: generate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+
+          # Combine categorized commits
+          {
+            echo "# Release v${VERSION}"
+            echo ""
+            echo "Released on $(date '+%Y-%m-%d')"
+            echo ""
+
+            # Add non-empty sections
+            for file in features.md fixes.md security.md docs.md refactor.md perf.md tests.md chores.md other.md; do
+              if [ -f "$file" ] && [ $(wc -l < "$file") -gt 2 ]; then
+                cat "$file"
+                echo ""
+              fi
+            done
+          } > changelog_draft.md
+
+          # If OpenAI API key is available, enhance with AI
+          if [ -n "$OPENAI_API_KEY" ]; then
+            echo "Enhancing changelog with AI..."
+
+            # Prepare prompt for AI
+            COMMITS=$(cat raw_commits.txt | head -50)
+
+            # Call OpenAI API to generate summary
+            RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -d @- <<EOF
+          {
+            "model": "gpt-4o-mini",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a technical writer creating release notes for a software project. Generate a concise, professional summary of the changes. Focus on user-facing improvements and important technical changes. Use bullet points for clarity. Keep it under 200 words."
+              },
+              {
+                "role": "user",
+                "content": "Generate a release summary for version ${VERSION} based on these commits:\n\n${COMMITS}"
+              }
+            ],
+            "max_tokens": 500,
+            "temperature": 0.7
+          }
+          EOF
+            )
+
+            # Extract the summary from the response
+            SUMMARY=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+
+            if [ -n "$SUMMARY" ]; then
+              {
+                echo "# Release v${VERSION}"
+                echo ""
+                echo "Released on $(date '+%Y-%m-%d')"
+                echo ""
+                echo "## 📋 Summary"
+                echo ""
+                echo "$SUMMARY"
+                echo ""
+                echo "---"
+                echo ""
+                echo "## 📝 Detailed Changes"
+                echo ""
+                # Add non-empty sections
+                for file in features.md fixes.md security.md docs.md refactor.md perf.md tests.md chores.md other.md; do
+                  if [ -f "$file" ] && [ $(wc -l < "$file") -gt 2 ]; then
+                    cat "$file"
+                    echo ""
+                  fi
+                done
+              } > changelog.md
+            else
+              echo "AI summary generation failed, using draft changelog"
+              cp changelog_draft.md changelog.md
+            fi
+          else
+            echo "No OpenAI API key, using standard changelog"
+            cp changelog_draft.md changelog.md
+          fi
+
+          # Output changelog for use in release
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat changelog.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Also save as artifact
+          cat changelog.md
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: changelog.md
+
   release:
-    needs: build
+    needs: [check, bump-version, build, changelog]
+    if: |
+      always() &&
+      needs.check.outputs.should_release == 'true' &&
+      needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Pull latest changes
+        run: git pull origin ${{ github.ref_name }} || true
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            artifacts/**/*
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+      - name: Create and push tag
+        if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ needs.check.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if tag already exists
+          if git tag -l "v$VERSION" | grep -q .; then
+            echo "Tag v$VERSION already exists, skipping"
+          else
+            git tag -a "v$VERSION" -m "Release v$VERSION"
+            git push origin "v$VERSION"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check.outputs.version }}
+          name: v${{ needs.check.outputs.version }}
+          body: ${{ needs.changelog.outputs.changelog }}
+          files: |
+            artifacts/**/*
+          draft: false
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

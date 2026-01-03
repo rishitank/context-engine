@@ -1,32 +1,57 @@
 //! MCP tool implementations.
 //!
-//! This module contains all 49 MCP tools organized by category:
+//! This module contains all 73 MCP tools organized by category:
 //!
 //! - `retrieval` - Codebase search and context retrieval (6 tools)
 //! - `index` - Index management tools (5 tools)
 //! - `planning` - AI-powered task planning (20 tools)
-//! - `memory` - Persistent memory storage (4 tools)
+//! - `memory` - Persistent memory storage (6 tools)
 //! - `review` - Code review tools (14 tools)
+//! - `navigation` - Code navigation tools (3 tools)
+//! - `workspace` - Workspace analysis and git tools (7 tools)
+//! - `search_specialized` - Specialized search tools (7 tools)
+//! - `language` - Multi-language symbol detection and definition patterns
 
 pub mod index;
+pub mod language;
 pub mod memory;
+pub mod navigation;
 pub mod planning;
 pub mod retrieval;
 pub mod review;
+pub mod search_specialized;
+pub mod workspace;
 
 use std::sync::Arc;
 
 use crate::mcp::handler::McpHandler;
 use crate::service::{ContextService, MemoryService, PlanningService};
 
-/// Register all tools with the handler.
+/// Registers the built-in MCP tools with the given handler using the provided services.
+///
+/// The function registers a fixed set of tools organized by category (retrieval, index,
+/// memory, planning, review, navigation, and workspace), constructing each tool with the
+/// appropriate service(s) supplied.
+///
+/// # Examples
+///
+/// ```
+/// use std::sync::Arc;
+///
+/// let mut handler = McpHandler::new();
+/// let ctx = Arc::new(ContextService::default());
+/// let mem = Arc::new(MemoryService::default());
+/// let plan = Arc::new(PlanningService::default());
+///
+/// register_all_tools(&mut handler, ctx, mem, plan);
+/// ```
 pub fn register_all_tools(
     handler: &mut McpHandler,
     context_service: Arc<ContextService>,
     memory_service: Arc<MemoryService>,
     planning_service: Arc<PlanningService>,
 ) {
-    // Retrieval tools (6)
+    // Retrieval tools (7)
     handler.register(retrieval::CodebaseRetrievalTool::new(
         context_service.clone(),
     ));
@@ -34,6 +59,7 @@ pub fn register_all_tools(
     handler.register(retrieval::GetFileTool::new(context_service.clone()));
     handler.register(retrieval::GetContextTool::new(context_service.clone()));
     handler.register(retrieval::EnhancePromptTool::new(context_service.clone()));
+    handler.register(retrieval::BundlePromptTool::new(context_service.clone()));
     handler.register(retrieval::ToolManifestTool::new());
 
     // Index tools (5)
@@ -43,11 +69,14 @@ pub fn register_all_tools(
     handler.register(index::ClearIndexTool::new(context_service.clone()));
     handler.register(index::RefreshIndexTool::new(context_service.clone()));
 
-    // Memory tools (4)
+    // Memory tools (6)
     handler.register(memory::StoreMemoryTool::new(memory_service.clone()));
     handler.register(memory::RetrieveMemoryTool::new(memory_service.clone()));
     handler.register(memory::ListMemoryTool::new(memory_service.clone()));
     handler.register(memory::DeleteMemoryTool::new(memory_service.clone()));
+    // New m1rl0k/Context-Engine compatible memory tools
+    handler.register(memory::MemoryStoreTool::new(memory_service.clone()));
+    handler.register(memory::MemoryFindTool::new(memory_service.clone()));
 
     // Planning tools (20)
     handler.register(planning::CreatePlanTool::new(planning_service.clone()));
@@ -88,4 +117,34 @@ pub fn register_all_tools(
     handler.register(review::PauseReviewTool::new());
     handler.register(review::ResumeReviewTool::new());
     handler.register(review::GetReviewTelemetryTool::new());
+
+    // Navigation tools (3)
+    handler.register(navigation::FindReferencesTool::new(context_service.clone()));
+    handler.register(navigation::GoToDefinitionTool::new(context_service.clone()));
+    handler.register(navigation::DiffFilesTool::new(context_service.clone()));
+
+    // Workspace tools (7)
+    handler.register(workspace::WorkspaceStatsTool::new(context_service.clone()));
+    handler.register(workspace::GitStatusTool::new(context_service.clone()));
+    handler.register(workspace::ExtractSymbolsTool::new(context_service.clone()));
+    handler.register(workspace::GitBlameTool::new(context_service.clone()));
+    handler.register(workspace::GitLogTool::new(context_service.clone()));
+    handler.register(workspace::DependencyGraphTool::new(context_service.clone()));
+    handler.register(workspace::FileOutlineTool::new(context_service.clone()));
+
+    // Specialized search tools (7) - m1rl0k/Context-Engine compatible
+    let workspace_path = context_service.workspace();
+    handler.register(search_specialized::SearchTestsForTool::new(workspace_path));
+    handler.register(search_specialized::SearchConfigForTool::new(workspace_path));
+    handler.register(search_specialized::SearchCallersForTool::new(
+        workspace_path,
+    ));
+    handler.register(search_specialized::SearchImportersForTool::new(
+        workspace_path,
+    ));
+    handler.register(search_specialized::InfoRequestTool::new(
+        context_service.clone(),
+    ));
+    handler.register(search_specialized::PatternSearchTool::new(workspace_path));
+    handler.register(search_specialized::ContextSearchTool::new(context_service));
 }
