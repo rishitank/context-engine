@@ -10,7 +10,7 @@ use crate::error::Result;
 use crate::mcp::handler::{
     error_result, get_int_arg, get_optional_string_arg, get_string_arg, success_result, ToolHandler,
 };
-use crate::mcp::protocol::{Tool, ToolResult};
+use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::service::ContextService;
 
 /// Get syntax highlighting language for a file extension.
@@ -76,7 +76,7 @@ impl ToolHandler for CodebaseRetrievalTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "codebase_retrieval".to_string(),
-            description: "Search the codebase using natural language. Returns relevant code snippets and context based on semantic understanding of the query.".to_string(),
+            description: "PRIMARY TOOL for understanding code. Use this FIRST when you need to find relevant code, understand how something works, or locate implementations. Searches the codebase using natural language and returns semantically relevant code snippets. Best for: exploring unfamiliar code, finding examples, understanding patterns.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -91,6 +91,8 @@ impl ToolHandler for CodebaseRetrievalTool {
                 },
                 "required": ["information_request"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Codebase Retrieval")),
+            ..Default::default()
         }
     }
 
@@ -124,9 +126,7 @@ impl ToolHandler for SearchCodeTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "semantic_search".to_string(),
-            description:
-                "Search for code patterns, functions, classes, or specific text in the codebase."
-                    .to_string(),
+            description: "Search for specific code patterns, functions, classes, or text. Use when you know WHAT you're looking for (e.g., 'find all async functions', 'search for error handling'). Supports file pattern filtering. For general exploration, use codebase_retrieval instead.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -145,6 +145,8 @@ impl ToolHandler for SearchCodeTool {
                 },
                 "required": ["query"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Semantic Search")),
+            ..Default::default()
         }
     }
 
@@ -182,8 +184,7 @@ impl ToolHandler for GetFileTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "get_file".to_string(),
-            description: "Retrieve complete or partial contents of a file from the codebase."
-                .to_string(),
+            description: "Read a specific file when you KNOW the exact path. Use when you need to see the full implementation of a file found via search. Supports line ranges for large files. For finding files, use codebase_retrieval or semantic_search first.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -202,6 +203,8 @@ impl ToolHandler for GetFileTool {
                 },
                 "required": ["path"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Get File")),
+            ..Default::default()
         }
     }
 
@@ -336,6 +339,8 @@ impl ToolHandler for GetContextTool {
                 },
                 "required": ["query"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Get Context for Prompt")),
+            ..Default::default()
         }
     }
 
@@ -396,6 +401,8 @@ impl ToolHandler for EnhancePromptTool {
                 },
                 "required": ["prompt"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Enhance Prompt")),
+            ..Default::default()
         }
     }
 
@@ -457,6 +464,8 @@ impl ToolHandler for BundlePromptTool {
                 },
                 "required": ["prompt"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Bundle Prompt")),
+            ..Default::default()
         }
     }
 
@@ -546,6 +555,8 @@ impl ToolHandler for ToolManifestTool {
                 "properties": {},
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Tool Manifest")),
+            ..Default::default()
         }
     }
 

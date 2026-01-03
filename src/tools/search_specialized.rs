@@ -20,7 +20,7 @@ use walkdir::WalkDir;
 
 use crate::error::Result;
 use crate::mcp::handler::{get_optional_string_arg, get_string_arg, success_result, ToolHandler};
-use crate::mcp::protocol::{Tool, ToolResult};
+use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::service::ContextService;
 
 /// Preset glob patterns for test files.
@@ -159,6 +159,8 @@ impl ToolHandler for SearchTestsForTool {
                 },
                 "required": ["query"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Search Tests For")),
+            ..Default::default()
         }
     }
 
@@ -220,6 +222,8 @@ impl ToolHandler for SearchConfigForTool {
                 },
                 "required": ["query"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Search Config For")),
+            ..Default::default()
         }
     }
 
@@ -286,6 +290,8 @@ impl ToolHandler for SearchCallersForTool {
                 },
                 "required": ["symbol"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Search Callers For")),
+            ..Default::default()
         }
     }
 
@@ -510,6 +516,8 @@ impl ToolHandler for SearchImportersForTool {
                 },
                 "required": ["module"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Search Importers For")),
+            ..Default::default()
         }
     }
 
@@ -575,6 +583,8 @@ impl ToolHandler for InfoRequestTool {
                 },
                 "required": ["query"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Info Request")),
+            ..Default::default()
         }
     }
 
@@ -671,6 +681,8 @@ impl ToolHandler for PatternSearchTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Pattern Search")),
+            ..Default::default()
         }
     }
 
@@ -757,6 +769,8 @@ impl ToolHandler for ContextSearchTool {
                 },
                 "required": ["query"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Context Search")),
+            ..Default::default()
         }
     }
 

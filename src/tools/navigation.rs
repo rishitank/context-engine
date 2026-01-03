@@ -10,7 +10,7 @@ use tokio::io::AsyncBufReadExt;
 
 use crate::error::Result;
 use crate::mcp::handler::{error_result, get_string_arg, success_result, ToolHandler};
-use crate::mcp::protocol::{Tool, ToolResult};
+use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::service::ContextService;
 use crate::tools::language;
 
@@ -59,7 +59,7 @@ impl ToolHandler for FindReferencesTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "find_references".to_string(),
-            description: "Find all references to a symbol (function, class, variable) in the codebase. Returns file paths and line numbers where the symbol is used.".to_string(),
+            description: "Find all usages of a symbol across the codebase. Use when you need to understand how a function/class/variable is used, assess impact of changes, or find call sites. Returns file paths and line numbers. For finding where a symbol is DEFINED, use go_to_definition instead.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -78,6 +78,8 @@ impl ToolHandler for FindReferencesTool {
                 },
                 "required": ["symbol"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Find References")),
+            ..Default::default()
         }
     }
 
@@ -179,7 +181,7 @@ impl ToolHandler for GoToDefinitionTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "go_to_definition".to_string(),
-            description: "Find the definition of a symbol (function, class, struct, type). Returns the file and line where the symbol is defined.".to_string(),
+            description: "Jump to where a symbol is DEFINED. Use when you see a function/class/type being used and want to see its implementation. Returns the file and line of the definition. For finding all USAGES of a symbol, use find_references instead.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -194,6 +196,8 @@ impl ToolHandler for GoToDefinitionTool {
                 },
                 "required": ["symbol"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Go To Definition")),
+            ..Default::default()
         }
     }
 
@@ -305,6 +309,8 @@ impl ToolHandler for DiffFilesTool {
                 },
                 "required": ["file1", "file2"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Diff Files")),
+            ..Default::default()
         }
     }
 
@@ -571,7 +577,7 @@ async fn find_definition(
 
                 // Skip if language hint provided and doesn't match
                 if let Some(lang) = language {
-                    if !file_lang.contains(lang) && lang != file_lang {
+                    if !language::language_matches_hint(file_lang, lang) {
                         continue;
                     }
                 }

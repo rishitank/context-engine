@@ -14,7 +14,7 @@ use crate::error::Result;
 use crate::mcp::handler::{
     error_result, get_optional_string_arg, get_string_arg, success_result, ToolHandler,
 };
-use crate::mcp::protocol::{Tool, ToolResult};
+use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::service::memory::{MemoryKind, MemoryMetadata, MemorySearchOptions};
 use crate::service::MemoryService;
 
@@ -54,6 +54,8 @@ impl ToolHandler for StoreMemoryTool {
                 },
                 "required": ["key", "value"]
             }),
+            annotations: Some(ToolAnnotations::additive().with_title("Store Memory")),
+            ..Default::default()
         }
     }
 
@@ -96,6 +98,8 @@ impl ToolHandler for RetrieveMemoryTool {
                 },
                 "required": ["key"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Retrieve Memory")),
+            ..Default::default()
         }
     }
 
@@ -139,6 +143,8 @@ impl ToolHandler for ListMemoryTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("List Memories")),
+            ..Default::default()
         }
     }
 
@@ -177,6 +183,8 @@ impl ToolHandler for DeleteMemoryTool {
                 },
                 "required": ["key"]
             }),
+            annotations: Some(ToolAnnotations::destructive().with_title("Delete Memory")),
+            ..Default::default()
         }
     }
 
@@ -264,6 +272,8 @@ impl ToolHandler for MemoryStoreTool {
                 },
                 "required": ["information"]
             }),
+            annotations: Some(ToolAnnotations::additive().with_title("Memory Store")),
+            ..Default::default()
         }
     }
 
@@ -383,6 +393,8 @@ impl ToolHandler for MemoryFindTool {
                 },
                 "required": ["query"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Memory Find")),
+            ..Default::default()
         }
     }
 

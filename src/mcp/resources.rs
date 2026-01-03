@@ -315,9 +315,15 @@ impl ResourceRegistry {
                     continue;
                 }
 
-                if path.is_dir() {
+                // Use async file_type() instead of blocking is_dir()/is_file()
+                let file_type = match entry.file_type().await {
+                    Ok(ft) => ft,
+                    Err(_) => continue,
+                };
+
+                if file_type.is_dir() {
                     stack.push((path, depth + 1));
-                } else if path.is_file() {
+                } else if file_type.is_file() {
                     let relative = path
                         .strip_prefix(dir)
                         .unwrap_or(&path)
@@ -336,6 +342,9 @@ impl ResourceRegistry {
                 }
             }
         }
+
+        // Sort files for deterministic pagination order
+        files.sort();
 
         Ok(files)
     }

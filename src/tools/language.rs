@@ -122,6 +122,128 @@ pub fn extension_to_language(ext: &str) -> &'static str {
     }
 }
 
+/// Normalizes a language hint to a canonical language identifier.
+///
+/// This function handles cases where users provide file extensions (e.g., "rs", "py")
+/// instead of full language names (e.g., "rust", "python"). It also handles
+/// common aliases and abbreviations.
+///
+/// # Examples
+///
+/// ```
+/// use crate::tools::language::normalize_language_hint;
+/// assert_eq!(normalize_language_hint("rs"), "rust");
+/// assert_eq!(normalize_language_hint("rust"), "rust");
+/// assert_eq!(normalize_language_hint("py"), "python");
+/// assert_eq!(normalize_language_hint("ts"), "typescript");
+/// ```
+pub fn normalize_language_hint(hint: &str) -> &'static str {
+    let hint_lower = hint.to_lowercase();
+    let hint_str = hint_lower.as_str();
+
+    // First, check if it's already a canonical language name
+    match hint_str {
+        "rust" => "rust",
+        "python" => "python",
+        "javascript" => "javascript",
+        "typescript" => "typescript",
+        "go" => "go",
+        "java" => "java",
+        "kotlin" => "kotlin",
+        "scala" => "scala",
+        "ruby" => "ruby",
+        "php" => "php",
+        "swift" => "swift",
+        "csharp" => "csharp",
+        "fsharp" => "fsharp",
+        "cpp" => "cpp",
+        "c" => "c",
+        "haskell" => "haskell",
+        "ocaml" => "ocaml",
+        "elixir" => "elixir",
+        "erlang" => "erlang",
+        "clojure" => "clojure",
+        "lua" => "lua",
+        "perl" => "perl",
+        "shell" => "shell",
+        "powershell" => "powershell",
+        "sql" => "sql",
+        "html" => "html",
+        "css" => "css",
+        "json" => "json",
+        "yaml" => "yaml",
+        "toml" => "toml",
+        "xml" => "xml",
+        "markdown" => "markdown",
+        "docker" => "docker",
+        "terraform" => "terraform",
+        "protobuf" => "protobuf",
+        "graphql" => "graphql",
+        "react" => "react",
+        "vue" => "vue",
+        "svelte" => "svelte",
+        "dart" => "dart",
+        "zig" => "zig",
+        "nim" => "nim",
+        "julia" => "julia",
+        "r" => "r",
+        "assembly" => "assembly",
+        "verilog" => "verilog",
+        "vhdl" => "vhdl",
+        "solidity" => "solidity",
+        "move" => "move",
+        "cairo" => "cairo",
+        "objectivec" => "objectivec",
+        "visualbasic" => "visualbasic",
+        "groovy" => "groovy",
+        "config" => "config",
+        "restructuredtext" => "restructuredtext",
+        "latex" => "latex",
+        "webassembly" => "webassembly",
+        "make" => "make",
+        "cmake" => "cmake",
+        "just" => "just",
+        "git" => "git",
+        "other" => "other",
+        // Handle common extensions as hints
+        _ => extension_to_language(hint_str),
+    }
+}
+
+/// Checks if a file's language matches a language hint.
+///
+/// This function handles the case where users provide either file extensions
+/// (e.g., "rs") or full language names (e.g., "rust") as hints.
+///
+/// # Examples
+///
+/// ```
+/// use crate::tools::language::language_matches_hint;
+/// assert!(language_matches_hint("rust", "rs"));
+/// assert!(language_matches_hint("rust", "rust"));
+/// assert!(language_matches_hint("python", "py"));
+/// assert!(!language_matches_hint("rust", "python"));
+/// ```
+pub fn language_matches_hint(file_lang: &str, hint: &str) -> bool {
+    // Direct match
+    if file_lang == hint {
+        return true;
+    }
+
+    // Normalize the hint and compare
+    let normalized_hint = normalize_language_hint(hint);
+    if file_lang == normalized_hint {
+        return true;
+    }
+
+    // Check if the file language contains the hint (for partial matches)
+    if file_lang.contains(hint) {
+        return true;
+    }
+
+    false
+}
+
 /// Maps an extensionless filename to a language category.
 ///
 /// Recognizes common configuration and build files without extensions.
@@ -2212,5 +2334,48 @@ mod tests {
 
         let patterns = get_definition_patterns("unknown_lang", "symbol");
         assert!(!patterns.is_empty()); // Should return fallback patterns
+    }
+
+    #[test]
+    fn test_normalize_language_hint() {
+        // Extension to canonical name
+        assert_eq!(normalize_language_hint("rs"), "rust");
+        assert_eq!(normalize_language_hint("py"), "python");
+        assert_eq!(normalize_language_hint("ts"), "typescript");
+        assert_eq!(normalize_language_hint("js"), "javascript");
+        assert_eq!(normalize_language_hint("go"), "go");
+        assert_eq!(normalize_language_hint("kt"), "kotlin");
+        assert_eq!(normalize_language_hint("cs"), "csharp");
+
+        // Already canonical names
+        assert_eq!(normalize_language_hint("rust"), "rust");
+        assert_eq!(normalize_language_hint("python"), "python");
+        assert_eq!(normalize_language_hint("typescript"), "typescript");
+
+        // Case insensitive
+        assert_eq!(normalize_language_hint("RS"), "rust");
+        assert_eq!(normalize_language_hint("Rust"), "rust");
+        assert_eq!(normalize_language_hint("PYTHON"), "python");
+    }
+
+    #[test]
+    fn test_language_matches_hint() {
+        // Direct match
+        assert!(language_matches_hint("rust", "rust"));
+        assert!(language_matches_hint("python", "python"));
+
+        // Extension hint matches canonical name
+        assert!(language_matches_hint("rust", "rs"));
+        assert!(language_matches_hint("python", "py"));
+        assert!(language_matches_hint("typescript", "ts"));
+        assert!(language_matches_hint("javascript", "js"));
+
+        // Partial match (contains)
+        assert!(language_matches_hint("typescript", "script"));
+
+        // Non-matches
+        assert!(!language_matches_hint("rust", "python"));
+        assert!(!language_matches_hint("rust", "py"));
+        assert!(!language_matches_hint("javascript", "ts"));
     }
 }

@@ -12,7 +12,7 @@ use tokio::time::timeout;
 
 use crate::error::Result;
 use crate::mcp::handler::{error_result, get_string_arg, success_result, ToolHandler};
-use crate::mcp::protocol::{Tool, ToolResult};
+use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::service::ContextService;
 use crate::tools::language;
 
@@ -56,7 +56,7 @@ impl ToolHandler for WorkspaceStatsTool {
     fn definition(&self) -> Tool {
         Tool {
             name: "workspace_stats".to_string(),
-            description: "Get workspace statistics including file counts by language, total lines of code, and directory structure overview.".to_string(),
+            description: "Get a high-level overview of the codebase. Use FIRST when starting work on an unfamiliar project to understand its size, languages used, and structure. Returns file counts by language, total lines of code, and directory breakdown.".to_string(),
             input_schema: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -67,6 +67,8 @@ impl ToolHandler for WorkspaceStatsTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Workspace Stats")),
+            ..Default::default()
         }
     }
 
@@ -359,6 +361,8 @@ impl ToolHandler for GitStatusTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Git Status")),
+            ..Default::default()
         }
     }
 
@@ -535,6 +539,8 @@ impl ToolHandler for ExtractSymbolsTool {
                 },
                 "required": ["file_path"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Extract Symbols")),
+            ..Default::default()
         }
     }
 
@@ -691,6 +697,8 @@ impl ToolHandler for GitBlameTool {
                 },
                 "required": ["file_path"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Git Blame")),
+            ..Default::default()
         }
     }
 
@@ -846,6 +854,8 @@ impl ToolHandler for GitLogTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Git Log")),
+            ..Default::default()
         }
     }
 
@@ -976,6 +986,8 @@ impl ToolHandler for DependencyGraphTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Dependency Graph")),
+            ..Default::default()
         }
     }
 
@@ -1299,6 +1311,8 @@ impl ToolHandler for FileOutlineTool {
                 },
                 "required": ["file_path"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("File Outline")),
+            ..Default::default()
         }
     }
 
