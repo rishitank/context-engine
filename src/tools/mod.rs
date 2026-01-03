@@ -1,14 +1,15 @@
 //! MCP tool implementations.
 //!
-//! This module contains all 59 MCP tools organized by category:
+//! This module contains all 73 MCP tools organized by category:
 //!
 //! - `retrieval` - Codebase search and context retrieval (6 tools)
 //! - `index` - Index management tools (5 tools)
 //! - `planning` - AI-powered task planning (20 tools)
-//! - `memory` - Persistent memory storage (4 tools)
+//! - `memory` - Persistent memory storage (6 tools)
 //! - `review` - Code review tools (14 tools)
 //! - `navigation` - Code navigation tools (3 tools)
 //! - `workspace` - Workspace analysis and git tools (7 tools)
+//! - `search_specialized` - Specialized search tools (7 tools)
 //! - `language` - Multi-language symbol detection and definition patterns
 
 pub mod index;
@@ -18,6 +19,7 @@ pub mod navigation;
 pub mod planning;
 pub mod retrieval;
 pub mod review;
+pub mod search_specialized;
 pub mod workspace;
 
 use std::sync::Arc;
@@ -67,11 +69,14 @@ pub fn register_all_tools(
     handler.register(index::ClearIndexTool::new(context_service.clone()));
     handler.register(index::RefreshIndexTool::new(context_service.clone()));
 
-    // Memory tools (4)
+    // Memory tools (6)
     handler.register(memory::StoreMemoryTool::new(memory_service.clone()));
     handler.register(memory::RetrieveMemoryTool::new(memory_service.clone()));
     handler.register(memory::ListMemoryTool::new(memory_service.clone()));
     handler.register(memory::DeleteMemoryTool::new(memory_service.clone()));
+    // New m1rl0k/Context-Engine compatible memory tools
+    handler.register(memory::MemoryStoreTool::new(memory_service.clone()));
+    handler.register(memory::MemoryFindTool::new(memory_service.clone()));
 
     // Planning tools (20)
     handler.register(planning::CreatePlanTool::new(planning_service.clone()));
@@ -125,5 +130,21 @@ pub fn register_all_tools(
     handler.register(workspace::GitBlameTool::new(context_service.clone()));
     handler.register(workspace::GitLogTool::new(context_service.clone()));
     handler.register(workspace::DependencyGraphTool::new(context_service.clone()));
-    handler.register(workspace::FileOutlineTool::new(context_service));
+    handler.register(workspace::FileOutlineTool::new(context_service.clone()));
+
+    // Specialized search tools (7) - m1rl0k/Context-Engine compatible
+    let workspace_path = context_service.workspace();
+    handler.register(search_specialized::SearchTestsForTool::new(workspace_path));
+    handler.register(search_specialized::SearchConfigForTool::new(workspace_path));
+    handler.register(search_specialized::SearchCallersForTool::new(
+        workspace_path,
+    ));
+    handler.register(search_specialized::SearchImportersForTool::new(
+        workspace_path,
+    ));
+    handler.register(search_specialized::InfoRequestTool::new(
+        context_service.clone(),
+    ));
+    handler.register(search_specialized::PatternSearchTool::new(workspace_path));
+    handler.register(search_specialized::ContextSearchTool::new(context_service));
 }
