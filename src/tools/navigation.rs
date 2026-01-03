@@ -340,12 +340,42 @@ impl ToolHandler for DiffFilesTool {
         let path1 = workspace.join(&file1);
         let path2 = workspace.join(&file2);
 
-        let content1 = match fs::read_to_string(&path1).await {
+        // Security: canonicalize workspace and paths to prevent path traversal attacks
+        let workspace_canonical = match workspace.canonicalize() {
+            Ok(p) => p,
+            Err(e) => return Ok(error_result(format!("Cannot resolve workspace: {}", e))),
+        };
+
+        let canonical1 = match path1.canonicalize() {
+            Ok(p) => p,
+            Err(e) => return Ok(error_result(format!("Cannot resolve {}: {}", file1, e))),
+        };
+
+        let canonical2 = match path2.canonicalize() {
+            Ok(p) => p,
+            Err(e) => return Ok(error_result(format!("Cannot resolve {}: {}", file2, e))),
+        };
+
+        // Verify both paths are within the workspace
+        if !canonical1.starts_with(&workspace_canonical) {
+            return Ok(error_result(format!(
+                "Access denied: {} is outside workspace",
+                file1
+            )));
+        }
+        if !canonical2.starts_with(&workspace_canonical) {
+            return Ok(error_result(format!(
+                "Access denied: {} is outside workspace",
+                file2
+            )));
+        }
+
+        let content1 = match fs::read_to_string(&canonical1).await {
             Ok(c) => c,
             Err(e) => return Ok(error_result(format!("Cannot read {}: {}", file1, e))),
         };
 
-        let content2 = match fs::read_to_string(&path2).await {
+        let content2 = match fs::read_to_string(&canonical2).await {
             Ok(c) => c,
             Err(e) => return Ok(error_result(format!("Cannot read {}: {}", file2, e))),
         };
@@ -433,9 +463,15 @@ async fn find_symbol_in_files(
                 continue;
             }
 
-            if path.is_dir() {
+            // Use async file_type() instead of blocking is_dir()/is_file()
+            let file_type = match entry.file_type().await {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+
+            if file_type.is_dir() {
                 stack.push(path);
-            } else if path.is_file() {
+            } else if file_type.is_file() {
                 // Check file pattern if provided
                 if let Some(pattern) = file_pattern {
                     if !matches_pattern(&name, pattern) {
@@ -521,9 +557,15 @@ async fn find_definition(
                 continue;
             }
 
-            if path.is_dir() {
+            // Use async file_type() instead of blocking is_dir()/is_file()
+            let file_type = match entry.file_type().await {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+
+            if file_type.is_dir() {
                 stack.push(path);
-            } else if path.is_file() {
+            } else if file_type.is_file() {
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                 let file_lang = get_language(ext);
 

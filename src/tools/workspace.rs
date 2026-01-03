@@ -5,14 +5,19 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::fs;
 use tokio::process::Command;
+use tokio::time::timeout;
 
 use crate::error::Result;
 use crate::mcp::handler::{error_result, get_string_arg, success_result, ToolHandler};
 use crate::mcp::protocol::{Tool, ToolResult};
 use crate::service::ContextService;
 use crate::tools::language;
+
+/// Default timeout for git commands (30 seconds).
+const GIT_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Get workspace statistics (file counts, language breakdown, etc.).
 pub struct WorkspaceStatsTool {
@@ -403,13 +408,17 @@ impl ToolHandler for GitStatusTool {
 
         let workspace = self.service.workspace_path();
 
-        // Get git status
-        let status_output = Command::new("git")
+        // Get git status with timeout to prevent indefinite hangs
+        let status_future = Command::new("git")
             .arg("status")
             .arg("--porcelain")
             .current_dir(workspace)
-            .output()
-            .await;
+            .output();
+
+        let status_output = match timeout(GIT_COMMAND_TIMEOUT, status_future).await {
+            Ok(result) => result,
+            Err(_) => return Ok(error_result("Git command timed out")),
+        };
 
         let status = match status_output {
             Ok(output) if output.status.success() => {
@@ -445,15 +454,14 @@ impl ToolHandler for GitStatusTool {
             }
         }
 
-        // Get diff if requested
+        // Get diff if requested (with timeout)
         if include_diff {
-            let diff_output = Command::new("git")
+            let diff_future = Command::new("git")
                 .arg("diff")
                 .current_dir(workspace)
-                .output()
-                .await;
+                .output();
 
-            if let Ok(output) = diff_output {
+            if let Ok(Ok(output)) = timeout(GIT_COMMAND_TIMEOUT, diff_future).await {
                 if output.status.success() {
                     result.diff = Some(String::from_utf8_lossy(&output.stdout).to_string());
                 }
@@ -712,7 +720,11 @@ impl ToolHandler for GitBlameTool {
 
         cmd.arg(&file_path);
 
-        let output = cmd.output().await;
+        // Execute with timeout to prevent indefinite hangs
+        let output = match timeout(GIT_COMMAND_TIMEOUT, cmd.output()).await {
+            Ok(result) => result,
+            Err(_) => return Ok(error_result("Git blame command timed out")),
+        };
 
         match output {
             Ok(output) => {
@@ -871,7 +883,11 @@ impl ToolHandler for GitLogTool {
             cmd.arg("--").arg(file);
         }
 
-        let output = cmd.output().await;
+        // Execute with timeout to prevent indefinite hangs
+        let output = match timeout(GIT_COMMAND_TIMEOUT, cmd.output()).await {
+            Ok(result) => result,
+            Err(_) => return Ok(error_result("Git log command timed out")),
+        };
 
         match output {
             Ok(output) => {

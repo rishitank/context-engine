@@ -240,9 +240,11 @@ impl ResourceRegistry {
     /// ```
     pub async fn subscribe(&self, uri: &str, session_id: &str) -> Result<()> {
         let mut subs = self.subscriptions.write().await;
-        subs.entry(uri.to_string())
-            .or_default()
-            .push(session_id.to_string());
+        let sessions = subs.entry(uri.to_string()).or_default();
+        // Prevent duplicate subscriptions from the same session
+        if !sessions.contains(&session_id.to_string()) {
+            sessions.push(session_id.to_string());
+        }
         Ok(())
     }
 
