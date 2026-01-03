@@ -282,14 +282,14 @@ async fn count_lines(path: &Path) -> Result<usize> {
 ///
 /// Delegates to the centralized language module for comprehensive language support.
 /// Returns a human-readable language name for common programming and configuration
-/// file extensions. Unrecognized extensions are mapped to `"unknown"`.
+/// file extensions. Unrecognized extensions are mapped to `"other"`.
 ///
 /// # Examples
 ///
 /// ```
 /// assert_eq!(extension_to_language("rs"), "rust");
 /// assert_eq!(extension_to_language("py"), "python");
-/// assert_eq!(extension_to_language("tsx"), "typescript");
+/// assert_eq!(extension_to_language("tsx"), "react");
 /// ```
 fn extension_to_language(ext: &str) -> &'static str {
     language::extension_to_language(ext)
@@ -304,8 +304,8 @@ fn extension_to_language(ext: &str) -> &'static str {
 /// # Examples
 ///
 /// ```
-/// assert_eq!(filename_to_language("Makefile"), Some("makefile"));
-/// assert_eq!(filename_to_language("Dockerfile"), Some("dockerfile"));
+/// assert_eq!(filename_to_language("Makefile"), Some("make"));
+/// assert_eq!(filename_to_language("Dockerfile"), Some("docker"));
 /// assert_eq!(filename_to_language("random"), None);
 /// ```
 fn filename_to_language(filename: &str) -> Option<&'static str> {

@@ -660,7 +660,7 @@ fn get_definition_patterns(symbol: &str, lang: Option<&str>) -> Vec<String> {
 ///
 /// ```
 /// assert_eq!(get_language("rs"), "rust");
-/// assert_eq!(get_language("tsx"), "typescript");
+/// assert_eq!(get_language("tsx"), "react");
 /// ```
 fn get_language(ext: &str) -> &'static str {
     language::extension_to_language(ext)

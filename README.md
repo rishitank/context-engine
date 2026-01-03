@@ -19,7 +19,7 @@ Context Engine provides semantic code search and AI-powered context retrieval fo
 |--------|-------|
 | **Binary Size** | ~7 MB (optimized ARM64) |
 | **Lines of Code** | ~10,500 Rust |
-| **Unit Tests** | 190 tests |
+| **Unit Tests** | 201 tests |
 | **Integration Tests** | 11 tests |
 | **MCP Tools** | 73 tools |
 | **Supported Languages** | 18+ (symbol detection) |
@@ -278,7 +278,7 @@ cargo test --all-targets
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Unit Tests | 170 | Core functionality tests |
+| Unit Tests | 201 | Core functionality tests |
 | Integration Tests | 11 | MCP protocol and CLI tests |
 
 ### Linting

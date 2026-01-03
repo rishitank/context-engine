@@ -301,7 +301,7 @@ Store information with rich metadata for enhanced retrieval. Compatible with m1r
 **Input Schema:**
 ```json
 {
-  "key": "string (required) - Unique key to identify this memory",
+  "key": "string (optional) - Unique key; if not provided, a UUID will be generated",
   "information": "string (required) - The information to store",
   "kind": "string (optional) - Type of memory: snippet, explanation, pattern, example, reference, memory",
   "language": "string (optional) - Programming language if applicable",
