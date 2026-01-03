@@ -18,9 +18,11 @@ Context Engine provides semantic code search and AI-powered context retrieval fo
 | Metric | Value |
 |--------|-------|
 | **Binary Size** | ~7 MB (optimized ARM64) |
-| **Lines of Code** | ~8,800 Rust |
-| **Unit Tests** | 107 tests |
-| **MCP Tools** | 49 tools |
+| **Lines of Code** | ~9,500 Rust |
+| **Unit Tests** | 170 tests |
+| **Integration Tests** | 11 tests |
+| **MCP Tools** | 60 tools |
+| **Supported Languages** | 18+ (symbol detection) |
 | **Startup Time** | <10ms |
 | **Memory Usage** | ~20 MB idle |
 
@@ -72,7 +74,7 @@ Credentials are resolved in order:
 2. Environment variables
 3. Session file (`~/.augment/session.json`)
 
-## MCP Tools (50 Total)
+## MCP Tools (60 Total)
 
 ### Retrieval Tools (7)
 | Tool | Description |
@@ -143,6 +145,24 @@ Credentials are resolved in order:
 | `pause_review` | Pause a running review session |
 | `resume_review` | Resume a paused review session |
 | `get_review_telemetry` | Get detailed review metrics |
+
+### Navigation Tools (3)
+| Tool | Description |
+|------|-------------|
+| `find_references` | Find all references to a symbol |
+| `go_to_definition` | Navigate to symbol definition |
+| `diff_files` | Compare two files with unified diff |
+
+### Workspace Tools (7)
+| Tool | Description |
+|------|-------------|
+| `workspace_stats` | Get workspace statistics and metrics |
+| `git_status` | Get current git status |
+| `extract_symbols` | Extract symbols from a file |
+| `git_blame` | Get git blame information |
+| `git_log` | Get git commit history |
+| `dependency_graph` | Generate dependency graph |
+| `file_outline` | Get file structure outline |
 
 ## Architecture
 
@@ -228,19 +248,46 @@ docker-compose down
 ### Running Tests
 
 ```bash
-cargo test
+# Run all unit tests (170 tests)
+cargo test --lib
+
+# Run integration tests (basic CLI tests)
+cargo test --test mcp_integration_test
+
+# Run full integration tests including MCP protocol tests
+cargo test --test mcp_integration_test -- --ignored
+
+# Run all tests
+cargo test --all-targets
 ```
+
+### Test Categories
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Unit Tests | 170 | Core functionality tests |
+| Integration Tests | 11 | MCP protocol and CLI tests |
 
 ### Linting
 
 ```bash
-cargo clippy
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 ### Formatting
 
 ```bash
 cargo fmt
+```
+
+### Code Coverage
+
+```bash
+# Install cargo-tarpaulin
+cargo install cargo-tarpaulin
+
+# Run with coverage
+cargo tarpaulin --out Html
 ```
 
 ## MCP Client Configuration

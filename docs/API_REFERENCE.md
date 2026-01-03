@@ -1,14 +1,16 @@
 # API Reference
 
-Complete reference for all 49 MCP tools provided by Context Engine.
+Complete reference for all 60 MCP tools provided by Context Engine.
 
 ## Table of Contents
 
-- [Retrieval Tools](#retrieval-tools-6)
+- [Retrieval Tools](#retrieval-tools-7)
 - [Index Tools](#index-tools-5)
 - [Memory Tools](#memory-tools-4)
 - [Planning Tools](#planning-tools-20)
 - [Review Tools](#review-tools-14)
+- [Navigation Tools](#navigation-tools-3)
+- [Workspace Tools](#workspace-tools-7)
 
 ---
 
@@ -757,6 +759,151 @@ Get detailed metrics for a review session.
 ```
 
 **Response includes:** tokens_used, cache_hits, cache_misses, duration_ms.
+
+---
+
+## Navigation Tools (3)
+
+### `find_references`
+
+Find all references to a symbol in the codebase.
+
+**Input Schema:**
+```json
+{
+  "symbol": "string (required) - The symbol name to find references for",
+  "file_pattern": "string (optional) - Glob pattern to filter files"
+}
+```
+
+---
+
+### `go_to_definition`
+
+Navigate to the definition of a symbol.
+
+**Input Schema:**
+```json
+{
+  "symbol": "string (required) - The symbol name to find definition for",
+  "file_pattern": "string (optional) - Glob pattern to filter files"
+}
+```
+
+---
+
+### `diff_files`
+
+Compare two files and show differences.
+
+**Input Schema:**
+```json
+{
+  "file1": "string (required) - Path to first file",
+  "file2": "string (required) - Path to second file",
+  "context_lines": "integer (optional) - Number of context lines (default: 3)"
+}
+```
+
+---
+
+## Workspace Tools (7)
+
+### `workspace_stats`
+
+Get comprehensive workspace statistics.
+
+**Input Schema:**
+```json
+{}
+```
+
+**Returns:** File counts by type, total lines of code, repository information.
+
+---
+
+### `git_status`
+
+Get current git status of the workspace.
+
+**Input Schema:**
+```json
+{}
+```
+
+**Returns:** Modified, staged, and untracked files.
+
+---
+
+### `extract_symbols`
+
+Extract all symbols (functions, classes, etc.) from a file.
+
+**Input Schema:**
+```json
+{
+  "path": "string (required) - File path relative to workspace"
+}
+```
+
+**Supported Languages:** Rust, Python, TypeScript, JavaScript, Go, Java, C, C++, Ruby, PHP, Swift, Kotlin, Scala, Elixir, Haskell, Lua, Dart, Clojure, and more.
+
+---
+
+### `git_blame`
+
+Get git blame information for a file.
+
+**Input Schema:**
+```json
+{
+  "path": "string (required) - File path relative to workspace",
+  "start_line": "integer (optional) - Starting line number",
+  "end_line": "integer (optional) - Ending line number"
+}
+```
+
+---
+
+### `git_log`
+
+Get git commit history.
+
+**Input Schema:**
+```json
+{
+  "path": "string (optional) - File path to get history for",
+  "max_count": "integer (optional) - Maximum number of commits (default: 10)"
+}
+```
+
+---
+
+### `dependency_graph`
+
+Generate a dependency graph for the project.
+
+**Input Schema:**
+```json
+{
+  "format": "string (optional) - Output format: 'mermaid' or 'text' (default: 'mermaid')"
+}
+```
+
+---
+
+### `file_outline`
+
+Get the structural outline of a file.
+
+**Input Schema:**
+```json
+{
+  "path": "string (required) - File path relative to workspace"
+}
+```
+
+**Returns:** Hierarchical structure of symbols in the file.
 
 ---
 
