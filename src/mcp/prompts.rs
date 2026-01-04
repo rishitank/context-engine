@@ -540,11 +540,16 @@ mod tests {
         prompt_registry.register_skills(&skill_registry);
 
         let prompts = prompt_registry.list();
-        let debugging_prompt = prompts.iter().find(|p| p.name == "skill:debugging").unwrap();
+        let debugging_prompt = prompts
+            .iter()
+            .find(|p| p.name == "skill:debugging")
+            .unwrap();
 
         assert!(debugging_prompt.description.contains("[Skill]"));
         assert!(debugging_prompt.description.contains("Debugging"));
-        assert!(debugging_prompt.description.contains("Debug code systematically"));
+        assert!(debugging_prompt
+            .description
+            .contains("Debug code systematically"));
     }
 
     #[test]
@@ -590,7 +595,10 @@ mod tests {
         prompt_registry.register_skills(&skill_registry);
 
         let mut args = HashMap::new();
-        args.insert("task".to_string(), "Fix the null pointer error in auth.rs".to_string());
+        args.insert(
+            "task".to_string(),
+            "Fix the null pointer error in auth.rs".to_string(),
+        );
 
         let result = prompt_registry.get("skill:debugging", &args);
 

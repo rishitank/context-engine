@@ -109,11 +109,24 @@ impl SkillRegistry {
             ));
         }
 
-        let end_marker = content[3..].find("---");
+        // Search for end marker after the opening "---"
+        let after_opening = &content[3..];
+        let end_marker = after_opening.find("---");
+
         match end_marker {
             Some(end_pos) => {
-                let yaml_content = &content[3..end_pos + 3].trim();
-                let instructions = content[end_pos + 6..].trim().to_string();
+                // Bounds check: ensure we have enough content
+                // end_pos is relative to after_opening, so yaml_content is [0..end_pos]
+                let yaml_content = after_opening[..end_pos].trim();
+
+                // The instructions start after the closing "---" (3 chars)
+                // Calculate the absolute position: 3 (opening) + end_pos + 3 (closing)
+                let instructions_start = end_pos + 3;
+                let instructions = if instructions_start <= after_opening.len() {
+                    after_opening[instructions_start..].trim().to_string()
+                } else {
+                    String::new()
+                };
 
                 let metadata: SkillMetadata = serde_yaml::from_str(yaml_content)?;
 
@@ -173,7 +186,13 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn create_test_skill(id: &str, name: &str, description: &str, category: Option<&str>, tags: Vec<&str>) -> Skill {
+    fn create_test_skill(
+        id: &str,
+        name: &str,
+        description: &str,
+        category: Option<&str>,
+        tags: Vec<&str>,
+    ) -> Skill {
         Skill {
             id: id.to_string(),
             metadata: SkillMetadata {
@@ -197,7 +216,13 @@ mod tests {
     #[test]
     fn test_skill_registry_add_and_get() {
         let mut registry = SkillRegistry::new(PathBuf::from("skills"));
-        let skill = create_test_skill("test", "Test Skill", "A test skill", Some("testing"), vec!["test", "unit"]);
+        let skill = create_test_skill(
+            "test",
+            "Test Skill",
+            "A test skill",
+            Some("testing"),
+            vec!["test", "unit"],
+        );
 
         registry.add_skill(skill);
 
@@ -216,8 +241,20 @@ mod tests {
     #[test]
     fn test_skill_registry_search_by_name() {
         let mut registry = SkillRegistry::new(PathBuf::from("skills"));
-        registry.add_skill(create_test_skill("debug", "Debugging", "Debug workflow", Some("troubleshoot"), vec![]));
-        registry.add_skill(create_test_skill("review", "Code Review", "Review code", Some("quality"), vec![]));
+        registry.add_skill(create_test_skill(
+            "debug",
+            "Debugging",
+            "Debug workflow",
+            Some("troubleshoot"),
+            vec![],
+        ));
+        registry.add_skill(create_test_skill(
+            "review",
+            "Code Review",
+            "Review code",
+            Some("quality"),
+            vec![],
+        ));
 
         let results = registry.search("debug");
         assert_eq!(results.len(), 1);
@@ -227,8 +264,20 @@ mod tests {
     #[test]
     fn test_skill_registry_search_by_description() {
         let mut registry = SkillRegistry::new(PathBuf::from("skills"));
-        registry.add_skill(create_test_skill("test1", "Skill 1", "workflow for testing", None, vec![]));
-        registry.add_skill(create_test_skill("test2", "Skill 2", "other purpose", None, vec![]));
+        registry.add_skill(create_test_skill(
+            "test1",
+            "Skill 1",
+            "workflow for testing",
+            None,
+            vec![],
+        ));
+        registry.add_skill(create_test_skill(
+            "test2",
+            "Skill 2",
+            "other purpose",
+            None,
+            vec![],
+        ));
 
         let results = registry.search("workflow");
         assert_eq!(results.len(), 1);
@@ -238,8 +287,20 @@ mod tests {
     #[test]
     fn test_skill_registry_search_by_tag() {
         let mut registry = SkillRegistry::new(PathBuf::from("skills"));
-        registry.add_skill(create_test_skill("s1", "S1", "Desc", None, vec!["python", "testing"]));
-        registry.add_skill(create_test_skill("s2", "S2", "Desc", None, vec!["rust", "coding"]));
+        registry.add_skill(create_test_skill(
+            "s1",
+            "S1",
+            "Desc",
+            None,
+            vec!["python", "testing"],
+        ));
+        registry.add_skill(create_test_skill(
+            "s2",
+            "S2",
+            "Desc",
+            None,
+            vec!["rust", "coding"],
+        ));
 
         let results = registry.search("python");
         assert_eq!(results.len(), 1);
@@ -249,8 +310,20 @@ mod tests {
     #[test]
     fn test_skill_registry_search_by_category() {
         let mut registry = SkillRegistry::new(PathBuf::from("skills"));
-        registry.add_skill(create_test_skill("s1", "S1", "Desc", Some("quality"), vec![]));
-        registry.add_skill(create_test_skill("s2", "S2", "Desc", Some("workflow"), vec![]));
+        registry.add_skill(create_test_skill(
+            "s1",
+            "S1",
+            "Desc",
+            Some("quality"),
+            vec![],
+        ));
+        registry.add_skill(create_test_skill(
+            "s2",
+            "S2",
+            "Desc",
+            Some("workflow"),
+            vec![],
+        ));
 
         let results = registry.search("quality");
         assert_eq!(results.len(), 1);
@@ -260,7 +333,13 @@ mod tests {
     #[test]
     fn test_skill_registry_search_case_insensitive() {
         let mut registry = SkillRegistry::new(PathBuf::from("skills"));
-        registry.add_skill(create_test_skill("test", "DEBUGGING", "Find BUGS", Some("QUALITY"), vec!["ERROR"]));
+        registry.add_skill(create_test_skill(
+            "test",
+            "DEBUGGING",
+            "Find BUGS",
+            Some("QUALITY"),
+            vec!["ERROR"],
+        ));
 
         assert_eq!(registry.search("debugging").len(), 1);
         assert_eq!(registry.search("bugs").len(), 1);
@@ -271,7 +350,13 @@ mod tests {
     #[test]
     fn test_skill_registry_search_no_results() {
         let mut registry = SkillRegistry::new(PathBuf::from("skills"));
-        registry.add_skill(create_test_skill("test", "Test", "Description", None, vec![]));
+        registry.add_skill(create_test_skill(
+            "test",
+            "Test",
+            "Description",
+            None,
+            vec![],
+        ));
 
         let results = registry.search("nonexistent");
         assert!(results.is_empty());
@@ -280,9 +365,27 @@ mod tests {
     #[test]
     fn test_skill_registry_search_multiple_results() {
         let mut registry = SkillRegistry::new(PathBuf::from("skills"));
-        registry.add_skill(create_test_skill("s1", "Code Review", "Review", Some("quality"), vec![]));
-        registry.add_skill(create_test_skill("s2", "Code Analysis", "Analyze", Some("quality"), vec![]));
-        registry.add_skill(create_test_skill("s3", "Other", "Other", Some("other"), vec![]));
+        registry.add_skill(create_test_skill(
+            "s1",
+            "Code Review",
+            "Review",
+            Some("quality"),
+            vec![],
+        ));
+        registry.add_skill(create_test_skill(
+            "s2",
+            "Code Analysis",
+            "Analyze",
+            Some("quality"),
+            vec![],
+        ));
+        registry.add_skill(create_test_skill(
+            "s3",
+            "Other",
+            "Other",
+            Some("other"),
+            vec![],
+        ));
 
         let results = registry.search("code");
         assert_eq!(results.len(), 2);
@@ -380,7 +483,9 @@ Content"#;
         // Create a test skill
         let skill_dir = skills_dir.join("test_skill");
         std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), r#"---
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            r#"---
 name: Test Skill
 description: A test skill for testing
 category: testing
@@ -390,7 +495,9 @@ tags:
 
 # Test Skill
 
-Test instructions."#).unwrap();
+Test instructions."#,
+        )
+        .unwrap();
 
         let mut registry = SkillRegistry::new(skills_dir);
         registry.load_skills().await.unwrap();
@@ -422,12 +529,16 @@ Test instructions."#).unwrap();
         // Create a valid skill
         let valid_dir = skills_dir.join("valid");
         std::fs::create_dir_all(&valid_dir).unwrap();
-        std::fs::write(valid_dir.join("SKILL.md"), r#"---
+        std::fs::write(
+            valid_dir.join("SKILL.md"),
+            r#"---
 name: Valid
 description: Valid skill
 ---
 
-Content"#).unwrap();
+Content"#,
+        )
+        .unwrap();
 
         // Create an invalid skill (missing frontmatter)
         let invalid_dir = skills_dir.join("invalid");
@@ -455,12 +566,19 @@ Content"#).unwrap();
         for i in 1..=3 {
             let skill_dir = skills_dir.join(format!("skill{}", i));
             std::fs::create_dir_all(&skill_dir).unwrap();
-            std::fs::write(skill_dir.join("SKILL.md"), format!(r#"---
+            std::fs::write(
+                skill_dir.join("SKILL.md"),
+                format!(
+                    r#"---
 name: Skill {}
 description: Description {}
 ---
 
-Content {}"#, i, i, i)).unwrap();
+Content {}"#,
+                    i, i, i
+                ),
+            )
+            .unwrap();
         }
 
         let mut registry = SkillRegistry::new(skills_dir);
@@ -501,4 +619,3 @@ Content {}"#, i, i, i)).unwrap();
         assert_eq!(deserialized.instructions, skill.instructions);
     }
 }
-

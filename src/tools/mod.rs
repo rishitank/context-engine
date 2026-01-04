@@ -166,10 +166,7 @@ pub fn register_all_tools(
 ///
 /// These tools implement the "Tool Search Tool" pattern for progressive disclosure
 /// of Agent Skills to MCP clients.
-pub fn register_skills_tools(
-    handler: &mut McpHandler,
-    skill_registry: Arc<RwLock<SkillRegistry>>,
-) {
+pub fn register_skills_tools(handler: &mut McpHandler, skill_registry: Arc<RwLock<SkillRegistry>>) {
     // Skills tools (3)
     handler.register(skills::ListSkillsTool::new(skill_registry.clone()));
     handler.register(skills::SearchSkillsTool::new(skill_registry.clone()));

@@ -11,7 +11,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::error::Result;
-use crate::mcp::handler::{get_optional_string_arg, get_string_arg, success_result, ToolHandler};
+use crate::mcp::handler::{
+    error_result, get_optional_string_arg, get_string_arg, success_result, ToolHandler,
+};
 use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::mcp::skills::SkillRegistry;
 
@@ -191,11 +193,11 @@ impl ToolHandler for LoadSkillTool {
             }
             None => {
                 let available: Vec<_> = registry.list().iter().map(|s| &s.id).collect();
-                let response = serde_json::json!({
-                    "error": format!("Skill '{}' not found", id),
-                    "available_skills": available
-                });
-                Ok(success_result(serde_json::to_string_pretty(&response)?))
+                let message = format!(
+                    "Skill '{}' not found. Available skills: {:?}",
+                    id, available
+                );
+                Ok(error_result(message))
             }
         }
     }
@@ -312,7 +314,10 @@ mod tests {
         let tool = ListSkillsTool::new(registry);
 
         let mut args = HashMap::new();
-        args.insert("category".to_string(), Value::String("nonexistent".to_string()));
+        args.insert(
+            "category".to_string(),
+            Value::String("nonexistent".to_string()),
+        );
 
         let result = tool.execute(args).await.unwrap();
         let text = extract_text(&result);
@@ -368,7 +373,10 @@ mod tests {
         let tool = SearchSkillsTool::new(registry);
 
         let mut args = HashMap::new();
-        args.insert("query".to_string(), Value::String("xyz123nonexistent".to_string()));
+        args.insert(
+            "query".to_string(),
+            Value::String("xyz123nonexistent".to_string()),
+        );
 
         let result = tool.execute(args).await.unwrap();
         let text = extract_text(&result);
@@ -417,7 +425,10 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["id"], "planning");
         assert_eq!(parsed["name"], "Planning");
-        assert!(parsed["instructions"].as_str().unwrap().contains("Plan your tasks"));
+        assert!(parsed["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("Plan your tasks"));
     }
 
     #[tokio::test]
@@ -429,10 +440,20 @@ mod tests {
         args.insert("id".to_string(), Value::String("nonexistent".to_string()));
 
         let result = tool.execute(args).await.unwrap();
+        // Verify it's an error result
+        assert!(
+            result.is_error,
+            "Expected is_error to be true for not found"
+        );
         let text = extract_text(&result);
-        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
-        assert!(parsed["error"].as_str().unwrap().contains("not found"));
-        assert!(parsed["available_skills"].is_array());
+        assert!(
+            text.contains("not found"),
+            "Error message should mention 'not found'"
+        );
+        assert!(
+            text.contains("Available skills"),
+            "Error should list available skills"
+        );
     }
 
     #[tokio::test]
@@ -454,4 +475,3 @@ mod tests {
         assert!(parsed["instructions"].is_string());
     }
 }
-

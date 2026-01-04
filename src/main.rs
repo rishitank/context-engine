@@ -93,10 +93,7 @@ async fn main() -> Result<()> {
     {
         let registry = skill_registry.read().await;
         prompts.register_skills(&registry);
-        info!(
-            "Registered {} skills as prompts",
-            registry.list().len()
-        );
+        info!("Registered {} skills as prompts", registry.list().len());
     }
 
     // Start the server based on transport mode

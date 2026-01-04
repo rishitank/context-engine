@@ -329,7 +329,9 @@ fn create_test_workspace_with_skills() -> TempDir {
     // Create a test skill
     let debug_dir = skills_dir.join("debugging");
     std::fs::create_dir_all(&debug_dir).expect("Failed to create debugging skill dir");
-    std::fs::write(debug_dir.join("SKILL.md"), r#"---
+    std::fs::write(
+        debug_dir.join("SKILL.md"),
+        r#"---
 name: Debugging
 description: Systematic debugging workflow
 category: troubleshooting
@@ -346,12 +348,16 @@ always_apply: false
 2. Identify the root cause
 3. Fix the bug
 4. Verify the fix
-"#).expect("Failed to write debugging skill");
+"#,
+    )
+    .expect("Failed to write debugging skill");
 
     // Create another test skill
     let test_dir = skills_dir.join("testing");
     std::fs::create_dir_all(&test_dir).expect("Failed to create testing skill dir");
-    std::fs::write(test_dir.join("SKILL.md"), r#"---
+    std::fs::write(
+        test_dir.join("SKILL.md"),
+        r#"---
 name: Testing
 description: Write comprehensive tests
 category: quality
@@ -364,7 +370,9 @@ always_apply: false
 # Testing Workflow
 
 Write good tests that cover edge cases.
-"#).expect("Failed to write testing skill");
+"#,
+    )
+    .expect("Failed to write testing skill");
 
     dir
 }
@@ -383,13 +391,18 @@ fn test_mcp_list_skills() {
 
     assert!(response.get("result").is_some(), "Expected result");
     let result = &response["result"];
-    let content = result["content"].as_array().expect("content should be array");
+    let content = result["content"]
+        .as_array()
+        .expect("content should be array");
     assert!(!content.is_empty(), "Expected content");
 
     // Parse the text content
     if let Some(text) = content[0]["text"].as_str() {
         let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
-        assert!(parsed["count"].as_i64().unwrap() >= 2, "Should have at least 2 skills");
+        assert!(
+            parsed["count"].as_i64().unwrap() >= 2,
+            "Should have at least 2 skills"
+        );
         assert!(parsed["skills"].is_array(), "Should have skills array");
     }
 }
@@ -408,11 +421,16 @@ fn test_mcp_search_skills() {
 
     assert!(response.get("result").is_some(), "Expected result");
     let result = &response["result"];
-    let content = result["content"].as_array().expect("content should be array");
+    let content = result["content"]
+        .as_array()
+        .expect("content should be array");
 
     if let Some(text) = content[0]["text"].as_str() {
         let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
-        assert!(parsed["count"].as_i64().unwrap() >= 1, "Should find at least 1 skill");
+        assert!(
+            parsed["count"].as_i64().unwrap() >= 1,
+            "Should find at least 1 skill"
+        );
 
         let skills = parsed["skills"].as_array().unwrap();
         let ids: Vec<&str> = skills.iter().filter_map(|s| s["id"].as_str()).collect();
@@ -434,13 +452,18 @@ fn test_mcp_load_skill() {
 
     assert!(response.get("result").is_some(), "Expected result");
     let result = &response["result"];
-    let content = result["content"].as_array().expect("content should be array");
+    let content = result["content"]
+        .as_array()
+        .expect("content should be array");
 
     if let Some(text) = content[0]["text"].as_str() {
         let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
         assert_eq!(parsed["id"].as_str().unwrap(), "debugging");
         assert_eq!(parsed["name"].as_str().unwrap(), "Debugging");
-        assert!(parsed["instructions"].as_str().unwrap().contains("Debugging Workflow"));
+        assert!(parsed["instructions"]
+            .as_str()
+            .unwrap()
+            .contains("Debugging Workflow"));
     }
 }
 
@@ -458,12 +481,26 @@ fn test_mcp_load_skill_not_found() {
 
     assert!(response.get("result").is_some(), "Expected result");
     let result = &response["result"];
-    let content = result["content"].as_array().expect("content should be array");
 
+    // Verify is_error is true for not found
+    assert_eq!(
+        result["isError"].as_bool().unwrap_or(false),
+        true,
+        "Expected isError to be true for not found"
+    );
+
+    let content = result["content"]
+        .as_array()
+        .expect("content should be array");
     if let Some(text) = content[0]["text"].as_str() {
-        let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
-        assert!(parsed["error"].as_str().unwrap().contains("not found"));
-        assert!(parsed["available_skills"].is_array());
+        assert!(
+            text.contains("not found"),
+            "Error message should mention 'not found'"
+        );
+        assert!(
+            text.contains("Available skills"),
+            "Error should list available skills"
+        );
     }
 }
 
@@ -481,7 +518,9 @@ fn test_mcp_list_skills_filter_by_category() {
 
     assert!(response.get("result").is_some(), "Expected result");
     let result = &response["result"];
-    let content = result["content"].as_array().expect("content should be array");
+    let content = result["content"]
+        .as_array()
+        .expect("content should be array");
 
     if let Some(text) = content[0]["text"].as_str() {
         let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
@@ -506,7 +545,9 @@ fn test_mcp_skill_prompts_available() {
 
     assert!(response.get("result").is_some(), "Expected result");
     let result = &response["result"];
-    let prompts = result["prompts"].as_array().expect("prompts should be array");
+    let prompts = result["prompts"]
+        .as_array()
+        .expect("prompts should be array");
 
     let prompt_names: Vec<&str> = prompts.iter().filter_map(|p| p["name"].as_str()).collect();
 
