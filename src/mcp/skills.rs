@@ -160,5 +160,345 @@ impl SkillRegistry {
             })
             .collect()
     }
+
+    /// Adds a skill directly (for testing).
+    #[cfg(test)]
+    pub fn add_skill(&mut self, skill: Skill) {
+        self.skills.insert(skill.id.clone(), skill);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn create_test_skill(id: &str, name: &str, description: &str, category: Option<&str>, tags: Vec<&str>) -> Skill {
+        Skill {
+            id: id.to_string(),
+            metadata: SkillMetadata {
+                name: name.to_string(),
+                description: description.to_string(),
+                category: category.map(|s| s.to_string()),
+                tags: tags.iter().map(|s| s.to_string()).collect(),
+                always_apply: false,
+            },
+            instructions: format!("# {} Instructions\n\nThis is the {} skill.", name, id),
+            path: PathBuf::from(format!("skills/{}/SKILL.md", id)),
+        }
+    }
+
+    #[test]
+    fn test_skill_registry_new() {
+        let registry = SkillRegistry::new(PathBuf::from("skills"));
+        assert!(registry.list().is_empty());
+    }
+
+    #[test]
+    fn test_skill_registry_add_and_get() {
+        let mut registry = SkillRegistry::new(PathBuf::from("skills"));
+        let skill = create_test_skill("test", "Test Skill", "A test skill", Some("testing"), vec!["test", "unit"]);
+
+        registry.add_skill(skill);
+
+        assert_eq!(registry.list().len(), 1);
+        let retrieved = registry.get("test").unwrap();
+        assert_eq!(retrieved.id, "test");
+        assert_eq!(retrieved.metadata.name, "Test Skill");
+    }
+
+    #[test]
+    fn test_skill_registry_get_nonexistent() {
+        let registry = SkillRegistry::new(PathBuf::from("skills"));
+        assert!(registry.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_skill_registry_search_by_name() {
+        let mut registry = SkillRegistry::new(PathBuf::from("skills"));
+        registry.add_skill(create_test_skill("debug", "Debugging", "Debug workflow", Some("troubleshoot"), vec![]));
+        registry.add_skill(create_test_skill("review", "Code Review", "Review code", Some("quality"), vec![]));
+
+        let results = registry.search("debug");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "debug");
+    }
+
+    #[test]
+    fn test_skill_registry_search_by_description() {
+        let mut registry = SkillRegistry::new(PathBuf::from("skills"));
+        registry.add_skill(create_test_skill("test1", "Skill 1", "workflow for testing", None, vec![]));
+        registry.add_skill(create_test_skill("test2", "Skill 2", "other purpose", None, vec![]));
+
+        let results = registry.search("workflow");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "test1");
+    }
+
+    #[test]
+    fn test_skill_registry_search_by_tag() {
+        let mut registry = SkillRegistry::new(PathBuf::from("skills"));
+        registry.add_skill(create_test_skill("s1", "S1", "Desc", None, vec!["python", "testing"]));
+        registry.add_skill(create_test_skill("s2", "S2", "Desc", None, vec!["rust", "coding"]));
+
+        let results = registry.search("python");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "s1");
+    }
+
+    #[test]
+    fn test_skill_registry_search_by_category() {
+        let mut registry = SkillRegistry::new(PathBuf::from("skills"));
+        registry.add_skill(create_test_skill("s1", "S1", "Desc", Some("quality"), vec![]));
+        registry.add_skill(create_test_skill("s2", "S2", "Desc", Some("workflow"), vec![]));
+
+        let results = registry.search("quality");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "s1");
+    }
+
+    #[test]
+    fn test_skill_registry_search_case_insensitive() {
+        let mut registry = SkillRegistry::new(PathBuf::from("skills"));
+        registry.add_skill(create_test_skill("test", "DEBUGGING", "Find BUGS", Some("QUALITY"), vec!["ERROR"]));
+
+        assert_eq!(registry.search("debugging").len(), 1);
+        assert_eq!(registry.search("bugs").len(), 1);
+        assert_eq!(registry.search("quality").len(), 1);
+        assert_eq!(registry.search("error").len(), 1);
+    }
+
+    #[test]
+    fn test_skill_registry_search_no_results() {
+        let mut registry = SkillRegistry::new(PathBuf::from("skills"));
+        registry.add_skill(create_test_skill("test", "Test", "Description", None, vec![]));
+
+        let results = registry.search("nonexistent");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_skill_registry_search_multiple_results() {
+        let mut registry = SkillRegistry::new(PathBuf::from("skills"));
+        registry.add_skill(create_test_skill("s1", "Code Review", "Review", Some("quality"), vec![]));
+        registry.add_skill(create_test_skill("s2", "Code Analysis", "Analyze", Some("quality"), vec![]));
+        registry.add_skill(create_test_skill("s3", "Other", "Other", Some("other"), vec![]));
+
+        let results = registry.search("code");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_frontmatter_valid() {
+        let content = r#"---
+name: test
+description: A test skill
+category: testing
+tags:
+  - unit
+  - test
+always_apply: false
+---
+
+# Test Skill
+
+Instructions here."#;
+
+        let (metadata, instructions) = SkillRegistry::parse_frontmatter(content).unwrap();
+        assert_eq!(metadata.name, "test");
+        assert_eq!(metadata.description, "A test skill");
+        assert_eq!(metadata.category, Some("testing".to_string()));
+        assert_eq!(metadata.tags, vec!["unit", "test"]);
+        assert!(!metadata.always_apply);
+        assert!(instructions.contains("# Test Skill"));
+    }
+
+    #[test]
+    fn test_parse_frontmatter_minimal() {
+        let content = r#"---
+name: minimal
+description: Minimal skill
+---
+
+Content"#;
+
+        let (metadata, instructions) = SkillRegistry::parse_frontmatter(content).unwrap();
+        assert_eq!(metadata.name, "minimal");
+        assert_eq!(metadata.description, "Minimal skill");
+        assert!(metadata.category.is_none());
+        assert!(metadata.tags.is_empty());
+        assert!(!metadata.always_apply);
+        assert_eq!(instructions, "Content");
+    }
+
+    #[test]
+    fn test_parse_frontmatter_no_start_marker() {
+        let content = "No frontmatter here";
+        let result = SkillRegistry::parse_frontmatter(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_no_end_marker() {
+        let content = "---\nname: test\ndescription: test\n";
+        let result = SkillRegistry::parse_frontmatter(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_invalid_yaml() {
+        let content = r#"---
+name: test
+description: [invalid yaml
+---
+
+Content"#;
+        let result = SkillRegistry::parse_frontmatter(content);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_frontmatter_always_apply_true() {
+        let content = r#"---
+name: auto
+description: Auto apply skill
+always_apply: true
+---
+
+Content"#;
+
+        let (metadata, _) = SkillRegistry::parse_frontmatter(content).unwrap();
+        assert!(metadata.always_apply);
+    }
+
+    #[tokio::test]
+    async fn test_load_skills_from_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create a test skill
+        let skill_dir = skills_dir.join("test_skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), r#"---
+name: Test Skill
+description: A test skill for testing
+category: testing
+tags:
+  - test
+---
+
+# Test Skill
+
+Test instructions."#).unwrap();
+
+        let mut registry = SkillRegistry::new(skills_dir);
+        registry.load_skills().await.unwrap();
+
+        assert_eq!(registry.list().len(), 1);
+        let skill = registry.get("test_skill").unwrap();
+        assert_eq!(skill.metadata.name, "Test Skill");
+        assert_eq!(skill.metadata.description, "A test skill for testing");
+    }
+
+    #[tokio::test]
+    async fn test_load_skills_creates_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("nonexistent_skills");
+
+        let mut registry = SkillRegistry::new(skills_dir.clone());
+        registry.load_skills().await.unwrap();
+
+        assert!(skills_dir.exists());
+        assert!(registry.list().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_load_skills_ignores_invalid() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+
+        // Create a valid skill
+        let valid_dir = skills_dir.join("valid");
+        std::fs::create_dir_all(&valid_dir).unwrap();
+        std::fs::write(valid_dir.join("SKILL.md"), r#"---
+name: Valid
+description: Valid skill
+---
+
+Content"#).unwrap();
+
+        // Create an invalid skill (missing frontmatter)
+        let invalid_dir = skills_dir.join("invalid");
+        std::fs::create_dir_all(&invalid_dir).unwrap();
+        std::fs::write(invalid_dir.join("SKILL.md"), "No frontmatter").unwrap();
+
+        // Create a directory without SKILL.md
+        let empty_dir = skills_dir.join("empty");
+        std::fs::create_dir_all(&empty_dir).unwrap();
+
+        let mut registry = SkillRegistry::new(skills_dir);
+        registry.load_skills().await.unwrap();
+
+        // Should only load the valid skill
+        assert_eq!(registry.list().len(), 1);
+        assert!(registry.get("valid").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_load_skills_multiple() {
+        let temp_dir = TempDir::new().unwrap();
+        let skills_dir = temp_dir.path().join("skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+
+        for i in 1..=3 {
+            let skill_dir = skills_dir.join(format!("skill{}", i));
+            std::fs::create_dir_all(&skill_dir).unwrap();
+            std::fs::write(skill_dir.join("SKILL.md"), format!(r#"---
+name: Skill {}
+description: Description {}
+---
+
+Content {}"#, i, i, i)).unwrap();
+        }
+
+        let mut registry = SkillRegistry::new(skills_dir);
+        registry.load_skills().await.unwrap();
+
+        assert_eq!(registry.list().len(), 3);
+    }
+
+    #[test]
+    fn test_skill_metadata_serialization() {
+        let metadata = SkillMetadata {
+            name: "Test".to_string(),
+            description: "Test description".to_string(),
+            category: Some("quality".to_string()),
+            tags: vec!["tag1".to_string(), "tag2".to_string()],
+            always_apply: true,
+        };
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        let deserialized: SkillMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.name, metadata.name);
+        assert_eq!(deserialized.description, metadata.description);
+        assert_eq!(deserialized.category, metadata.category);
+        assert_eq!(deserialized.tags, metadata.tags);
+        assert_eq!(deserialized.always_apply, metadata.always_apply);
+    }
+
+    #[test]
+    fn test_skill_serialization() {
+        let skill = create_test_skill("test", "Test", "Desc", Some("cat"), vec!["tag"]);
+
+        let json = serde_json::to_string(&skill).unwrap();
+        let deserialized: Skill = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.id, skill.id);
+        assert_eq!(deserialized.metadata.name, skill.metadata.name);
+        assert_eq!(deserialized.instructions, skill.instructions);
+    }
 }
 

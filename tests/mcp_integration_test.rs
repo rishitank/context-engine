@@ -314,3 +314,206 @@ fn test_mcp_invalid_file_path() {
     // Should return result with error content or error
     assert!(response.get("result").is_some() || response.get("error").is_some());
 }
+
+// ============================================================================
+// Skills Integration Tests
+// ============================================================================
+
+fn create_test_workspace_with_skills() -> TempDir {
+    let dir = create_test_workspace();
+
+    // Create skills directory with test skills
+    let skills_dir = dir.path().join("skills");
+    std::fs::create_dir_all(&skills_dir).expect("Failed to create skills dir");
+
+    // Create a test skill
+    let debug_dir = skills_dir.join("debugging");
+    std::fs::create_dir_all(&debug_dir).expect("Failed to create debugging skill dir");
+    std::fs::write(debug_dir.join("SKILL.md"), r#"---
+name: Debugging
+description: Systematic debugging workflow
+category: troubleshooting
+tags:
+  - bugs
+  - errors
+  - fix
+always_apply: false
+---
+
+# Debugging Workflow
+
+1. Reproduce the issue
+2. Identify the root cause
+3. Fix the bug
+4. Verify the fix
+"#).expect("Failed to write debugging skill");
+
+    // Create another test skill
+    let test_dir = skills_dir.join("testing");
+    std::fs::create_dir_all(&test_dir).expect("Failed to create testing skill dir");
+    std::fs::write(test_dir.join("SKILL.md"), r#"---
+name: Testing
+description: Write comprehensive tests
+category: quality
+tags:
+  - unit-tests
+  - integration
+always_apply: false
+---
+
+# Testing Workflow
+
+Write good tests that cover edge cases.
+"#).expect("Failed to write testing skill");
+
+    dir
+}
+
+#[test]
+#[ignore = "Requires running MCP server - run with --ignored"]
+fn test_mcp_list_skills() {
+    let workspace = create_test_workspace_with_skills();
+    let mut client = McpTestClient::spawn(workspace.path().to_str().unwrap())
+        .expect("Failed to spawn MCP server");
+
+    client.initialize().expect("Failed to initialize");
+    let response = client
+        .call_tool("list_skills", json!({}))
+        .expect("Failed to list skills");
+
+    assert!(response.get("result").is_some(), "Expected result");
+    let result = &response["result"];
+    let content = result["content"].as_array().expect("content should be array");
+    assert!(!content.is_empty(), "Expected content");
+
+    // Parse the text content
+    if let Some(text) = content[0]["text"].as_str() {
+        let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
+        assert!(parsed["count"].as_i64().unwrap() >= 2, "Should have at least 2 skills");
+        assert!(parsed["skills"].is_array(), "Should have skills array");
+    }
+}
+
+#[test]
+#[ignore = "Requires running MCP server - run with --ignored"]
+fn test_mcp_search_skills() {
+    let workspace = create_test_workspace_with_skills();
+    let mut client = McpTestClient::spawn(workspace.path().to_str().unwrap())
+        .expect("Failed to spawn MCP server");
+
+    client.initialize().expect("Failed to initialize");
+    let response = client
+        .call_tool("search_skills", json!({ "query": "debug" }))
+        .expect("Failed to search skills");
+
+    assert!(response.get("result").is_some(), "Expected result");
+    let result = &response["result"];
+    let content = result["content"].as_array().expect("content should be array");
+
+    if let Some(text) = content[0]["text"].as_str() {
+        let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
+        assert!(parsed["count"].as_i64().unwrap() >= 1, "Should find at least 1 skill");
+
+        let skills = parsed["skills"].as_array().unwrap();
+        let ids: Vec<&str> = skills.iter().filter_map(|s| s["id"].as_str()).collect();
+        assert!(ids.contains(&"debugging"), "Should find debugging skill");
+    }
+}
+
+#[test]
+#[ignore = "Requires running MCP server - run with --ignored"]
+fn test_mcp_load_skill() {
+    let workspace = create_test_workspace_with_skills();
+    let mut client = McpTestClient::spawn(workspace.path().to_str().unwrap())
+        .expect("Failed to spawn MCP server");
+
+    client.initialize().expect("Failed to initialize");
+    let response = client
+        .call_tool("load_skill", json!({ "id": "debugging" }))
+        .expect("Failed to load skill");
+
+    assert!(response.get("result").is_some(), "Expected result");
+    let result = &response["result"];
+    let content = result["content"].as_array().expect("content should be array");
+
+    if let Some(text) = content[0]["text"].as_str() {
+        let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
+        assert_eq!(parsed["id"].as_str().unwrap(), "debugging");
+        assert_eq!(parsed["name"].as_str().unwrap(), "Debugging");
+        assert!(parsed["instructions"].as_str().unwrap().contains("Debugging Workflow"));
+    }
+}
+
+#[test]
+#[ignore = "Requires running MCP server - run with --ignored"]
+fn test_mcp_load_skill_not_found() {
+    let workspace = create_test_workspace_with_skills();
+    let mut client = McpTestClient::spawn(workspace.path().to_str().unwrap())
+        .expect("Failed to spawn MCP server");
+
+    client.initialize().expect("Failed to initialize");
+    let response = client
+        .call_tool("load_skill", json!({ "id": "nonexistent_skill" }))
+        .expect("Failed to load skill");
+
+    assert!(response.get("result").is_some(), "Expected result");
+    let result = &response["result"];
+    let content = result["content"].as_array().expect("content should be array");
+
+    if let Some(text) = content[0]["text"].as_str() {
+        let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
+        assert!(parsed["error"].as_str().unwrap().contains("not found"));
+        assert!(parsed["available_skills"].is_array());
+    }
+}
+
+#[test]
+#[ignore = "Requires running MCP server - run with --ignored"]
+fn test_mcp_list_skills_filter_by_category() {
+    let workspace = create_test_workspace_with_skills();
+    let mut client = McpTestClient::spawn(workspace.path().to_str().unwrap())
+        .expect("Failed to spawn MCP server");
+
+    client.initialize().expect("Failed to initialize");
+    let response = client
+        .call_tool("list_skills", json!({ "category": "quality" }))
+        .expect("Failed to list skills");
+
+    assert!(response.get("result").is_some(), "Expected result");
+    let result = &response["result"];
+    let content = result["content"].as_array().expect("content should be array");
+
+    if let Some(text) = content[0]["text"].as_str() {
+        let parsed: Value = serde_json::from_str(text).expect("Should parse as JSON");
+        let skills = parsed["skills"].as_array().unwrap();
+
+        // All returned skills should have "quality" category
+        for skill in skills {
+            assert_eq!(skill["category"], "quality");
+        }
+    }
+}
+
+#[test]
+#[ignore = "Requires running MCP server - run with --ignored"]
+fn test_mcp_skill_prompts_available() {
+    let workspace = create_test_workspace_with_skills();
+    let mut client = McpTestClient::spawn(workspace.path().to_str().unwrap())
+        .expect("Failed to spawn MCP server");
+
+    client.initialize().expect("Failed to initialize");
+    let response = client.list_prompts().expect("Failed to list prompts");
+
+    assert!(response.get("result").is_some(), "Expected result");
+    let result = &response["result"];
+    let prompts = result["prompts"].as_array().expect("prompts should be array");
+
+    let prompt_names: Vec<&str> = prompts.iter().filter_map(|p| p["name"].as_str()).collect();
+
+    // Should have skill prompts
+    assert!(
+        prompt_names.iter().any(|n| n.starts_with("skill:")),
+        "Expected skill prompts, got: {:?}",
+        prompt_names
+    );
+}

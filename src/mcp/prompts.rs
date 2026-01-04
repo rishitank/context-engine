@@ -470,4 +470,165 @@ mod tests {
         assert!(!text.contains("{{#if"));
         assert!(!text.contains("{{/if}}"));
     }
+
+    // ========== Skills as Prompts Tests ==========
+
+    fn create_test_skill_registry() -> SkillRegistry {
+        use crate::mcp::skills::{Skill, SkillMetadata};
+        use std::path::PathBuf;
+
+        let mut registry = SkillRegistry::new(PathBuf::from("test_skills"));
+
+        registry.add_skill(Skill {
+            id: "debugging".to_string(),
+            metadata: SkillMetadata {
+                name: "Debugging".to_string(),
+                description: "Debug code systematically".to_string(),
+                category: Some("troubleshooting".to_string()),
+                tags: vec!["bugs".to_string()],
+                always_apply: false,
+            },
+            instructions: "# Debugging\n\n1. Find the bug\n2. Fix it".to_string(),
+            path: PathBuf::from("skills/debugging/SKILL.md"),
+        });
+
+        registry.add_skill(Skill {
+            id: "testing".to_string(),
+            metadata: SkillMetadata {
+                name: "Testing".to_string(),
+                description: "Write comprehensive tests".to_string(),
+                category: Some("quality".to_string()),
+                tags: vec!["unit-tests".to_string()],
+                always_apply: false,
+            },
+            instructions: "# Testing\n\nWrite good tests.".to_string(),
+            path: PathBuf::from("skills/testing/SKILL.md"),
+        });
+
+        registry
+    }
+
+    #[test]
+    fn test_register_skills_as_prompts() {
+        let mut prompt_registry = PromptRegistry::new();
+        let skill_registry = create_test_skill_registry();
+
+        let initial_count = prompt_registry.list().len();
+        prompt_registry.register_skills(&skill_registry);
+
+        // Should have added 2 skill prompts
+        assert_eq!(prompt_registry.list().len(), initial_count + 2);
+    }
+
+    #[test]
+    fn test_skill_prompt_naming() {
+        let mut prompt_registry = PromptRegistry::new();
+        let skill_registry = create_test_skill_registry();
+        prompt_registry.register_skills(&skill_registry);
+
+        // Should have skill:debugging and skill:testing prompts
+        let prompts = prompt_registry.list();
+        let names: Vec<_> = prompts.iter().map(|p| &p.name).collect();
+        assert!(names.contains(&&"skill:debugging".to_string()));
+        assert!(names.contains(&&"skill:testing".to_string()));
+    }
+
+    #[test]
+    fn test_skill_prompt_description() {
+        let mut prompt_registry = PromptRegistry::new();
+        let skill_registry = create_test_skill_registry();
+        prompt_registry.register_skills(&skill_registry);
+
+        let prompts = prompt_registry.list();
+        let debugging_prompt = prompts.iter().find(|p| p.name == "skill:debugging").unwrap();
+
+        assert!(debugging_prompt.description.contains("[Skill]"));
+        assert!(debugging_prompt.description.contains("Debugging"));
+        assert!(debugging_prompt.description.contains("Debug code systematically"));
+    }
+
+    #[test]
+    fn test_skill_prompt_has_task_argument() {
+        let mut prompt_registry = PromptRegistry::new();
+        let skill_registry = create_test_skill_registry();
+        prompt_registry.register_skills(&skill_registry);
+
+        let prompts = prompt_registry.list();
+        let testing_prompt = prompts.iter().find(|p| p.name == "skill:testing").unwrap();
+
+        assert_eq!(testing_prompt.arguments.len(), 1);
+        assert_eq!(testing_prompt.arguments[0].name, "task");
+        assert!(!testing_prompt.arguments[0].required);
+    }
+
+    #[test]
+    fn test_skill_prompt_get_without_task() {
+        let mut prompt_registry = PromptRegistry::new();
+        let skill_registry = create_test_skill_registry();
+        prompt_registry.register_skills(&skill_registry);
+
+        let args = HashMap::new();
+        let result = prompt_registry.get("skill:debugging", &args);
+
+        assert!(result.is_some());
+        let text = match &result.unwrap().messages[0].content {
+            PromptContent::Text { text } => text.clone(),
+            _ => panic!("Expected text content"),
+        };
+
+        // Should contain the skill instructions
+        assert!(text.contains("# Debugging"));
+        assert!(text.contains("Find the bug"));
+        // Should not contain the task section (no task provided)
+        assert!(!text.contains("## Your Task"));
+    }
+
+    #[test]
+    fn test_skill_prompt_get_with_task() {
+        let mut prompt_registry = PromptRegistry::new();
+        let skill_registry = create_test_skill_registry();
+        prompt_registry.register_skills(&skill_registry);
+
+        let mut args = HashMap::new();
+        args.insert("task".to_string(), "Fix the null pointer error in auth.rs".to_string());
+
+        let result = prompt_registry.get("skill:debugging", &args);
+
+        assert!(result.is_some());
+        let text = match &result.unwrap().messages[0].content {
+            PromptContent::Text { text } => text.clone(),
+            _ => panic!("Expected text content"),
+        };
+
+        // Should contain both instructions and task
+        assert!(text.contains("# Debugging"));
+        assert!(text.contains("## Your Task"));
+        assert!(text.contains("Fix the null pointer error in auth.rs"));
+    }
+
+    #[test]
+    fn test_skill_prompt_nonexistent() {
+        let mut prompt_registry = PromptRegistry::new();
+        let skill_registry = create_test_skill_registry();
+        prompt_registry.register_skills(&skill_registry);
+
+        let args = HashMap::new();
+        let result = prompt_registry.get("skill:nonexistent", &args);
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_register_skills_empty_registry() {
+        use std::path::PathBuf;
+
+        let mut prompt_registry = PromptRegistry::new();
+        let skill_registry = SkillRegistry::new(PathBuf::from("empty"));
+
+        let initial_count = prompt_registry.list().len();
+        prompt_registry.register_skills(&skill_registry);
+
+        // Should not add any prompts
+        assert_eq!(prompt_registry.list().len(), initial_count);
+    }
 }

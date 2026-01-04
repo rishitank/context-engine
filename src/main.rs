@@ -12,7 +12,6 @@
 //! - Skills are also exposed as MCP prompts for native MCP client support
 
 use clap::Parser;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn, Level};
@@ -65,8 +64,8 @@ async fn main() -> Result<()> {
     let status = context_service.status().await;
     info!("Index ready: {} files indexed", status.file_count);
 
-    // Initialize skills registry
-    let skills_dir = PathBuf::from("skills");
+    // Initialize skills registry - use workspace skills dir
+    let skills_dir = config.workspace.join("skills");
     let skill_registry = Arc::new(RwLock::new(SkillRegistry::new(skills_dir)));
     {
         let mut registry = skill_registry.write().await;
