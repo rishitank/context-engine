@@ -89,8 +89,16 @@ async fn main() -> Result<()> {
     tools::register_skills_tools(&mut handler, skill_registry.clone());
     info!("Registered {} MCP tools", handler.tool_count());
 
-    // Create prompt registry
-    let prompts = PromptRegistry::new();
+    // Create prompt registry and register skills as prompts
+    let mut prompts = PromptRegistry::new();
+    {
+        let registry = skill_registry.read().await;
+        prompts.register_skills(&registry);
+        info!(
+            "Registered {} skills as prompts",
+            registry.list().len()
+        );
+    }
 
     // Start the server based on transport mode
     match config.transport {

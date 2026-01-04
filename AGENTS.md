@@ -15,20 +15,25 @@ This project includes Agent Skills that provide workflow guidance for complex ta
 | `planning` | Task planning and execution workflow | Breaking down complex multi-step tasks |
 | `code_review` | Comprehensive code review workflow | Reviewing PRs, analyzing risks, checking quality |
 | `search_patterns` | Specialized search patterns | Finding tests, configs, callers, semantic search |
+| `debugging` | Systematic debugging workflow | Investigating errors, stack traces, and bugs |
+| `refactoring` | Safe code refactoring with impact analysis | Restructuring code, reducing duplication |
+| `documentation` | Documentation generation workflow | Creating READMEs, API docs, comments |
+| `testing` | Comprehensive test writing workflow | Writing unit tests, integration tests |
 
 ### Loading Skills
 
-Skills are available via MCP tools:
+Skills are available via:
 
+**MCP Tools (recommended):**
 ```
-# List all available skills
-list_skills()
+list_skills()                      # List all available skills
+search_skills(query: "debugging")  # Search by query
+load_skill(id: "debugging")        # Load full instructions
+```
 
-# Search for relevant skills
-search_skills(query: "code review")
-
-# Load full skill instructions
-load_skill(id: "code_review")
+**MCP Prompts:**
+```
+prompts/get name="skill:debugging" arguments={"task": "Fix null pointer error"}
 ```
 
 ## Architecture

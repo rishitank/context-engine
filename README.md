@@ -22,7 +22,7 @@ Context Engine provides semantic code search and AI-powered context retrieval fo
 | **Unit Tests** | 201 tests |
 | **Integration Tests** | 11 tests |
 | **MCP Tools** | 72 tools |
-| **Agent Skills** | 3 skills |
+| **Agent Skills** | 7 skills |
 | **Supported Languages** | 18+ (symbol detection) |
 | **Startup Time** | <10ms |
 | **Memory Usage** | ~20 MB idle |
@@ -196,12 +196,17 @@ Context Engine implements the **Tool Search Tool** pattern for progressive discl
 | `planning` | workflow | Task planning and execution for complex multi-step tasks |
 | `code_review` | quality | Comprehensive code review workflow |
 | `search_patterns` | search | Specialized search patterns for tests, configs, callers |
+| `debugging` | troubleshooting | Systematic debugging workflow for identifying and fixing bugs |
+| `refactoring` | quality | Safe code refactoring workflow with impact analysis |
+| `documentation` | quality | Documentation generation and maintenance workflow |
+| `testing` | quality | Comprehensive test writing and maintenance workflow |
 
 ### How Skills Work
 
 1. **Discovery**: Call `list_skills()` or `search_skills(query)` to find relevant skills
 2. **Loading**: Call `load_skill(id)` to get full instructions
 3. **Execution**: Follow the skill instructions using primitive MCP tools
+4. **Via Prompts**: Skills are also available as MCP prompts (e.g., `skill:debugging`)
 
 Skills are loaded from `skills/` directory as `SKILL.md` files following the [Agent Skills specification](https://agentskills.io).
 
@@ -209,10 +214,11 @@ Skills are loaded from `skills/` directory as `SKILL.md` files following the [Ag
 
 | Client | How Skills Are Accessed |
 |--------|------------------------|
-| Claude Code | Native Agent Skills support (reads SKILL.md) |
+| Claude Code | Native Agent Skills support (reads SKILL.md directly) |
 | Cursor | MCP tools (`search_skills`, `load_skill`) |
 | GitHub Copilot | AGENTS.md + MCP tools |
 | Windsurf | MCP tools |
+| VS Code + Continue | MCP prompts (`skill:*`) |
 | OpenAI Codex | AGENTS.md |
 
 ## Architecture

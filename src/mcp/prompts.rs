@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use super::skills::SkillRegistry;
+
 /// A prompt argument definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptArgument {
@@ -326,6 +328,46 @@ Include:
                 }],
             }
         })
+    }
+
+    /// Registers all skills from a SkillRegistry as prompts.
+    ///
+    /// Each skill becomes a prompt with:
+    /// - Name: `skill:<skill_id>` (e.g., `skill:debugging`)
+    /// - Description: The skill's description from metadata
+    /// - Arguments: Optional `task` argument for context
+    /// - Template: The full skill instructions
+    ///
+    /// This allows MCP clients that support prompts to access skills natively.
+    pub fn register_skills(&mut self, skill_registry: &SkillRegistry) {
+        for skill in skill_registry.list() {
+            let prompt_name = format!("skill:{}", skill.id);
+
+            // Get full skill content
+            if let Some(full_skill) = skill_registry.get(&skill.id) {
+                self.register(
+                    Prompt {
+                        name: prompt_name,
+                        description: format!(
+                            "[Skill] {} - {}",
+                            skill.metadata.name, skill.metadata.description
+                        ),
+                        arguments: vec![PromptArgument {
+                            name: "task".to_string(),
+                            description: "The specific task you want to accomplish with this skill"
+                                .to_string(),
+                            required: false,
+                        }],
+                    },
+                    PromptTemplate {
+                        template: format!(
+                            "# {} Skill\n\n{}\n\n{{{{#if task}}}}## Your Task\n\n{{{{task}}}}{{{{/if}}}}",
+                            skill.metadata.name, full_skill.instructions
+                        ),
+                    },
+                );
+            }
+        }
     }
 }
 
