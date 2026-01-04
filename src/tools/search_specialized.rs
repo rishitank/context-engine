@@ -717,7 +717,7 @@ impl ToolHandler for PatternSearchTool {
         };
 
         let results =
-            search_with_pattern(&self.workspace, &pattern, file_pattern.as_deref(), limit).await;
+            search_with_pattern(&self.workspace, &pattern, file_pattern.as_deref(), limit).await?;
 
         let response = serde_json::json!({
             "pattern": pattern,
@@ -885,13 +885,12 @@ async fn search_with_pattern(
     pattern: &str,
     file_pattern: Option<&str>,
     limit: usize,
-) -> Vec<serde_json::Value> {
+) -> Result<Vec<serde_json::Value>> {
     let mut results = Vec::new();
     let file_glob = file_pattern.and_then(|p| Pattern::new(p).ok());
-    let regex = match regex::Regex::new(pattern) {
-        Ok(r) => r,
-        Err(_) => return results,
-    };
+    let regex = regex::Regex::new(pattern).map_err(|e| {
+        crate::error::Error::InvalidToolArguments(format!("Invalid regex pattern: {}", e))
+    })?;
 
     for entry in WalkDir::new(workspace)
         .max_depth(10)
@@ -941,7 +940,7 @@ async fn search_with_pattern(
         }
     }
 
-    results
+    Ok(results)
 }
 
 #[cfg(test)]
