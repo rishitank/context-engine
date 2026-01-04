@@ -783,15 +783,25 @@ impl ToolHandler for ContextSearchTool {
     async fn execute(&self, args: HashMap<String, Value>) -> Result<ToolResult> {
         let query = get_string_arg(&args, "query")?;
         let context_file = get_optional_string_arg(&args, "context_file");
+        // Note: include_related is parsed for API compatibility but the underlying
+        // ContextService::search() does not yet support filtering related results.
+        // When false, we reduce max_tokens to limit result scope as a workaround.
         let include_related = args
             .get("include_related")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
-        let max_tokens = args
+        let base_max_tokens = args
             .get("max_tokens")
             .and_then(|v| v.as_u64())
             .map(|l| l.min(50000) as usize)
             .unwrap_or(4000);
+
+        // When include_related is false, reduce token limit to focus on direct matches
+        let max_tokens = if include_related {
+            base_max_tokens
+        } else {
+            base_max_tokens / 2
+        };
 
         // Build enhanced query with context
         let enhanced_query = if let Some(ref file) = context_file {
