@@ -21,7 +21,8 @@ Context Engine provides semantic code search and AI-powered context retrieval fo
 | **Lines of Code** | ~10,500 Rust |
 | **Unit Tests** | 201 tests |
 | **Integration Tests** | 11 tests |
-| **MCP Tools** | 69 tools |
+| **MCP Tools** | 72 tools |
+| **Agent Skills** | 3 skills |
 | **Supported Languages** | 18+ (symbol detection) |
 | **Startup Time** | <10ms |
 | **Memory Usage** | ~20 MB idle |
@@ -74,7 +75,7 @@ Credentials are resolved in order:
 2. Environment variables
 3. Session file (`~/.augment/session.json`)
 
-## MCP Tools (69 Total)
+## MCP Tools (72 Total)
 
 ### Retrieval Tools (7)
 | Tool | Description |
@@ -176,6 +177,43 @@ Credentials are resolved in order:
 | `info_request` | Simplified retrieval with explanation mode |
 | `pattern_search` | Structural code pattern matching |
 | `context_search` | Context-aware semantic search |
+
+### Skills Tools (3)
+| Tool | Description |
+|------|-------------|
+| `list_skills` | List all available Agent Skills |
+| `search_skills` | Search skills by query (metadata only) |
+| `load_skill` | Load full skill instructions on demand |
+
+## Agent Skills
+
+Context Engine implements the **Tool Search Tool** pattern for progressive disclosure of Agent Skills. This reduces token overhead by ~75% compared to loading all tool definitions upfront.
+
+### Available Skills
+
+| Skill | Category | Description |
+|-------|----------|-------------|
+| `planning` | workflow | Task planning and execution for complex multi-step tasks |
+| `code_review` | quality | Comprehensive code review workflow |
+| `search_patterns` | search | Specialized search patterns for tests, configs, callers |
+
+### How Skills Work
+
+1. **Discovery**: Call `list_skills()` or `search_skills(query)` to find relevant skills
+2. **Loading**: Call `load_skill(id)` to get full instructions
+3. **Execution**: Follow the skill instructions using primitive MCP tools
+
+Skills are loaded from `skills/` directory as `SKILL.md` files following the [Agent Skills specification](https://agentskills.io).
+
+### Client Compatibility
+
+| Client | How Skills Are Accessed |
+|--------|------------------------|
+| Claude Code | Native Agent Skills support (reads SKILL.md) |
+| Cursor | MCP tools (`search_skills`, `load_skill`) |
+| GitHub Copilot | AGENTS.md + MCP tools |
+| Windsurf | MCP tools |
+| OpenAI Codex | AGENTS.md |
 
 ## Architecture
 

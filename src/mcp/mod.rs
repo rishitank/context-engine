@@ -12,6 +12,7 @@
 //! - `prompts` - Prompt templates for common tasks
 //! - `resources` - File resources for browsing codebase
 //! - `progress` - Progress notifications for long-running operations
+//! - `skills` - Agent Skills support (SKILL.md files)
 
 pub mod handler;
 pub mod progress;
@@ -19,6 +20,7 @@ pub mod prompts;
 pub mod protocol;
 pub mod resources;
 pub mod server;
+pub mod skills;
 pub mod transport;
 
 pub use handler::McpHandler;
@@ -27,4 +29,5 @@ pub use prompts::PromptRegistry;
 pub use protocol::*;
 pub use resources::ResourceRegistry;
 pub use server::McpServer;
+pub use skills::SkillRegistry;
 pub use transport::{StdioTransport, Transport};

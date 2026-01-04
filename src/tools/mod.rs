@@ -1,8 +1,8 @@
 //! MCP tool implementations.
 //!
-//! This module contains all 73 MCP tools organized by category:
+//! This module contains MCP tools organized by category:
 //!
-//! - `retrieval` - Codebase search and context retrieval (6 tools)
+//! - `retrieval` - Codebase search and context retrieval (7 tools)
 //! - `index` - Index management tools (5 tools)
 //! - `planning` - AI-powered task planning (20 tools)
 //! - `memory` - Persistent memory storage (6 tools)
@@ -10,7 +10,17 @@
 //! - `navigation` - Code navigation tools (3 tools)
 //! - `workspace` - Workspace analysis and git tools (7 tools)
 //! - `search_specialized` - Specialized search tools (7 tools)
+//! - `skills` - Agent Skills discovery and loading (3 tools)
 //! - `language` - Multi-language symbol detection and definition patterns
+//!
+//! ## Skills Architecture
+//!
+//! The skills tools implement the "Tool Search Tool" pattern for progressive disclosure:
+//! - `list_skills` - List all available skills (metadata only)
+//! - `search_skills` - Search skills by query (metadata only)
+//! - `load_skill` - Load full skill instructions on demand
+//!
+//! This reduces token overhead by ~75% compared to loading all tool definitions upfront.
 
 pub mod index;
 pub mod language;
@@ -20,11 +30,14 @@ pub mod planning;
 pub mod retrieval;
 pub mod review;
 pub mod search_specialized;
+pub mod skills;
 pub mod workspace;
 
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use crate::mcp::handler::McpHandler;
+use crate::mcp::skills::SkillRegistry;
 use crate::service::{ContextService, MemoryService, PlanningService};
 
 /// Registers the built-in MCP tools with the given handler using the provided services.
@@ -147,4 +160,18 @@ pub fn register_all_tools(
     ));
     handler.register(search_specialized::PatternSearchTool::new(workspace_path));
     handler.register(search_specialized::ContextSearchTool::new(context_service));
+}
+
+/// Registers skills tools with the given handler.
+///
+/// These tools implement the "Tool Search Tool" pattern for progressive disclosure
+/// of Agent Skills to MCP clients.
+pub fn register_skills_tools(
+    handler: &mut McpHandler,
+    skill_registry: Arc<RwLock<SkillRegistry>>,
+) {
+    // Skills tools (3)
+    handler.register(skills::ListSkillsTool::new(skill_registry.clone()));
+    handler.register(skills::SearchSkillsTool::new(skill_registry.clone()));
+    handler.register(skills::LoadSkillTool::new(skill_registry));
 }

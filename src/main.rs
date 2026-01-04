@@ -2,16 +2,28 @@
 //!
 //! A high-performance Model Context Protocol (MCP) server for AI-powered code
 //! context retrieval, planning, and review.
+//!
+//! ## Skills Architecture
+//!
+//! This server implements the "Tool Search Tool" pattern for Agent Skills:
+//! - Skills are loaded from the `skills/` directory
+//! - MCP clients can discover skills via `list_skills` and `search_skills` tools
+//! - Full skill instructions are loaded on-demand via `load_skill`
+//! - Skills are also exposed as MCP prompts for native MCP client support
 
 use clap::Parser;
+use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{info, Level};
+use tokio::sync::RwLock;
+use tracing::{info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
 use context_engine_rs::config::{Args, Config, Transport};
 use context_engine_rs::error::Result;
 use context_engine_rs::mcp::handler::McpHandler;
+use context_engine_rs::mcp::prompts::PromptRegistry;
 use context_engine_rs::mcp::server::McpServer;
+use context_engine_rs::mcp::skills::SkillRegistry;
 use context_engine_rs::mcp::transport::StdioTransport;
 use context_engine_rs::service::{ContextService, MemoryService, PlanningService};
 use context_engine_rs::tools;
@@ -53,6 +65,19 @@ async fn main() -> Result<()> {
     let status = context_service.status().await;
     info!("Index ready: {} files indexed", status.file_count);
 
+    // Initialize skills registry
+    let skills_dir = PathBuf::from("skills");
+    let skill_registry = Arc::new(RwLock::new(SkillRegistry::new(skills_dir)));
+    {
+        let mut registry = skill_registry.write().await;
+        if let Err(e) = registry.load_skills().await {
+            warn!("Failed to load skills: {}", e);
+        } else {
+            let count = registry.list().len();
+            info!("Loaded {} skills", count);
+        }
+    }
+
     // Create MCP handler and register tools
     let mut handler = McpHandler::new();
     tools::register_all_tools(
@@ -61,13 +86,18 @@ async fn main() -> Result<()> {
         memory_service.clone(),
         planning_service.clone(),
     );
+    tools::register_skills_tools(&mut handler, skill_registry.clone());
     info!("Registered {} MCP tools", handler.tool_count());
+
+    // Create prompt registry
+    let prompts = PromptRegistry::new();
 
     // Start the server based on transport mode
     match config.transport {
         Transport::Stdio => {
             info!("Starting stdio transport...");
-            let server = McpServer::new(handler, "context-engine");
+            let server =
+                McpServer::with_features(handler, prompts, context_service, "context-engine");
             let transport = StdioTransport::new();
             server.run(transport).await?;
         }
