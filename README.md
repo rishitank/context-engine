@@ -21,7 +21,7 @@ Context Engine provides semantic code search and AI-powered context retrieval fo
 | **Lines of Code** | ~10,500 Rust |
 | **Unit Tests** | 201 tests |
 | **Integration Tests** | 11 tests |
-| **MCP Tools** | 73 tools |
+| **MCP Tools** | 69 tools |
 | **Supported Languages** | 18+ (symbol detection) |
 | **Startup Time** | <10ms |
 | **Memory Usage** | ~20 MB idle |
@@ -74,7 +74,7 @@ Credentials are resolved in order:
 2. Environment variables
 3. Session file (`~/.augment/session.json`)
 
-## MCP Tools (73 Total)
+## MCP Tools (69 Total)
 
 ### Retrieval Tools (7)
 | Tool | Description |
