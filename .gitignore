@@ -10,7 +10,6 @@
 *.key
 
 # Augment SDK state files
-.augment/
 .augment-context-state.json
 .augment-index-fingerprint.json
 .augment-search-cache.json
