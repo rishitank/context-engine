@@ -483,9 +483,8 @@ fn test_mcp_load_skill_not_found() {
     let result = &response["result"];
 
     // Verify is_error is true for not found
-    assert_eq!(
+    assert!(
         result["isError"].as_bool().unwrap_or(false),
-        true,
         "Expected isError to be true for not found"
     );
 
