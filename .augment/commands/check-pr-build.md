@@ -43,14 +43,14 @@ When this command is executed, perform the following steps:
 
 - If `PR_NUMBER` is provided, use it
 - Otherwise, get current branch name and search GitHub for open PRs from that branch
-  - Use: `GET /repos/rishitank/context-engine/pulls?head=rishitank:{branch_name}&state=open`
+  - Use: `GET /repos/{owner}/{repo}/pulls?head={owner}:{branch_name}&state=open`
 - Get the latest commit SHA:
   - From local git: `git rev-parse HEAD`
   - Or from PR details: `head.sha`
 
 ## 2. Fetch Check Runs
 
-Use: `GET /repos/rishitank/context-engine/commits/{commit_sha}/check-runs`
+Use: `GET /repos/{owner}/{repo}/commits/{commit_sha}/check-runs`
 
 - Set `per_page: 100` and handle pagination if needed
 - For each check run, extract:
@@ -62,7 +62,7 @@ Use: `GET /repos/rishitank/context-engine/commits/{commit_sha}/check-runs`
 
 ## 3. Fetch Workflow Runs
 
-Use: `GET /repos/rishitank/context-engine/actions/runs?head_sha={commit_sha}`
+Use: `GET /repos/{owner}/{repo}/actions/runs?head_sha={commit_sha}`
 
 - Set `per_page: 100`
 - For each workflow run, extract:
@@ -75,9 +75,9 @@ Use: `GET /repos/rishitank/context-engine/actions/runs?head_sha={commit_sha}`
 
 ## 4. Get Jobs for Failed Workflow Runs
 
-For each failed workflow run, use: `GET /repos/rishitank/context-engine/actions/runs/{run_id}/jobs`
+For each failed workflow run, use: `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs`
 
-- Set `per_page: 100` and `details: true`
+- Set `per_page: 100`
 - For each job, extract:
   - `id`: Job ID
   - `name`: Job name (e.g., "build-test")
@@ -88,7 +88,7 @@ For each failed workflow run, use: `GET /repos/rishitank/context-engine/actions/
 
 ## 5. Retrieve Logs for Failed Jobs
 
-For each failed job, use: `GET /repos/rishitank/context-engine/actions/jobs/{job_id}/logs`
+For each failed job, use: `GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs`
 
 - Logs are returned as plain text
 - Parse logs to extract:
@@ -147,6 +147,7 @@ Output format:
 **Suggested Fix**:
 
 {analysis_and_suggestions}
+```
 
 ---
 
@@ -155,7 +156,24 @@ Output format:
 1. {actionable_step_1}
 2. {actionable_step_2}
 
-```markdown
+## Error Analysis Algorithm
+
+When generating `{analysis_and_suggestions}`, apply the following logic:
+
+| Error Category | Pattern | Suggested Fix |
+|----------------|---------|---------------|
+| **Test Failures** | `FAIL`, `✕`, `assertion failed`, `expected X but got Y` | Re-run failing tests locally, check for flaky tests, review test assertions |
+| **Build Errors** | `error[E`, `cannot find`, `unresolved import` | Check for missing dependencies, verify import paths, run `cargo check` locally |
+| **TypeScript Errors** | `TS\d+:`, `Type .* is not assignable` | Fix type annotations, check for missing type definitions |
+| **Linting Issues** | `warning:`, `clippy::`, `eslint` | Run formatter (`cargo fmt`, `npm run lint:fix`), address warnings |
+| **Dependency Issues** | `could not resolve`, `version conflict`, `not found in registry` | Update lockfile, check version constraints, verify package exists |
+| **Timeout/Hang** | `timed out`, `exceeded`, `killed` | Increase timeout, check for infinite loops, optimize slow operations |
+
+For each error, provide:
+1. **Root cause**: What specifically failed
+2. **File/line**: Where the error occurred (if available)
+3. **Fix command**: Specific command to run (e.g., `cargo fmt`, `npm test -- --updateSnapshot`)
+4. **Prevention**: How to avoid this in the future
 
 ## Notes
 

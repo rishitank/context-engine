@@ -327,13 +327,19 @@ async fn search_callers(
 ) -> Vec<serde_json::Value> {
     let mut results = Vec::new();
 
-    // Patterns to find function/method calls
-    let call_patterns = [
-        format!(r"{}[\s]*\(", symbol),   // function call: symbol(
-        format!(r"\.{}[\s]*\(", symbol), // method call: .symbol(
-        format!(r"::{}[\s]*\(", symbol), // Rust path call: ::symbol(
-        format!(r"->{}[\s]*\(", symbol), // C/C++ pointer call: ->symbol(
-    ];
+    // Escape symbol for safe regex matching
+    let escaped_symbol = regex::escape(symbol);
+
+    // Pre-compile patterns to find function/method calls
+    let call_patterns: Vec<regex::Regex> = [
+        format!(r"{}[\s]*\(", escaped_symbol), // function call: symbol(
+        format!(r"\.{}[\s]*\(", escaped_symbol), // method call: .symbol(
+        format!(r"::{}[\s]*\(", escaped_symbol), // Rust path call: ::symbol(
+        format!(r"->{}[\s]*\(", escaped_symbol), // C/C++ pointer call: ->symbol(
+    ]
+    .into_iter()
+    .filter_map(|p| regex::Regex::new(&p).ok())
+    .collect();
 
     let file_glob = file_pattern.and_then(|p| Pattern::new(p).ok());
 
@@ -366,11 +372,8 @@ async fn search_callers(
             let mut matching_lines = Vec::new();
 
             for (i, line) in content.lines().enumerate() {
-                for pattern in &call_patterns {
-                    if regex::Regex::new(pattern)
-                        .map(|re| re.is_match(line))
-                        .unwrap_or(false)
-                    {
+                for re in &call_patterns {
+                    if re.is_match(line) {
                         matching_lines.push(serde_json::json!({
                             "line": i + 1,
                             "content": line.trim()
@@ -404,15 +407,21 @@ async fn search_importers(
 ) -> Vec<serde_json::Value> {
     let mut results = Vec::new();
 
-    // Import patterns for different languages
-    let import_patterns = [
-        format!("import.*{}", module),                // Python, JS, TS
-        format!("from.*{}.*import", module),          // Python
-        format!("require.*['\"].*{}.*['\"]", module), // Node.js
-        format!("use.*{}", module),                   // Rust
-        format!("#include.*{}", module),              // C/C++
-        format!("using.*{}", module),                 // C#
-    ];
+    // Escape module for safe regex matching
+    let escaped_module = regex::escape(module).to_lowercase();
+
+    // Pre-compile import patterns for different languages (case-insensitive)
+    let import_patterns: Vec<regex::Regex> = [
+        format!("import.*{}", escaped_module),       // Python, JS, TS
+        format!("from.*{}.*import", escaped_module), // Python
+        format!("require.*['\"].*{}.*['\"]", escaped_module), // Node.js
+        format!("use.*{}", escaped_module),          // Rust
+        format!("#include.*{}", escaped_module),     // C/C++
+        format!("using.*{}", escaped_module),        // C#
+    ]
+    .into_iter()
+    .filter_map(|p| regex::Regex::new(&p).ok())
+    .collect();
 
     let file_glob = file_pattern.and_then(|p| Pattern::new(p).ok());
 
@@ -446,11 +455,8 @@ async fn search_importers(
 
             for (i, line) in content.lines().enumerate() {
                 let line_lower = line.to_lowercase();
-                for pattern in &import_patterns {
-                    if regex::Regex::new(&pattern.to_lowercase())
-                        .map(|re| re.is_match(&line_lower))
-                        .unwrap_or(false)
-                    {
+                for re in &import_patterns {
+                    if re.is_match(&line_lower) {
                         matching_lines.push(serde_json::json!({
                             "line": i + 1,
                             "content": line.trim()
