@@ -1,6 +1,6 @@
 //! MCP protocol types and message definitions.
 //!
-//! Based on the Model Context Protocol specification.
+//! Based on the Model Context Protocol specification (2025-11-25).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -9,8 +9,8 @@ use std::collections::HashMap;
 /// JSON-RPC version.
 pub const JSONRPC_VERSION: &str = "2.0";
 
-/// MCP protocol version.
-pub const MCP_VERSION: &str = "2024-11-05";
+/// MCP protocol version - Updated to latest stable spec (2025-11-25).
+pub const MCP_VERSION: &str = "2025-11-25";
 
 // ===== JSON-RPC Base Types =====
 
@@ -119,13 +119,188 @@ pub struct InitializeResult {
     pub server_info: ServerInfo,
 }
 
+/// Tool annotations - hints about tool behavior for AI clients.
+///
+/// These annotations help AI clients understand when and how to use tools automatically.
+/// All properties are hints and not guaranteed to be accurate for untrusted servers.
+///
+/// Based on MCP spec 2025-11-25.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolAnnotations {
+    /// Human-readable title for the tool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// If true, the tool does not modify its environment.
+    /// Default: false
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_only_hint: Option<bool>,
+
+    /// If true, the tool may perform destructive updates to its environment.
+    /// If false, the tool performs only additive updates.
+    /// (Meaningful only when readOnlyHint == false)
+    /// Default: true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destructive_hint: Option<bool>,
+
+    /// If true, calling the tool repeatedly with the same arguments
+    /// will have no additional effect on its environment.
+    /// (Meaningful only when readOnlyHint == false)
+    /// Default: false
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotent_hint: Option<bool>,
+
+    /// If true, this tool may interact with an "open world" of external entities.
+    /// If false, the tool's domain of interaction is closed.
+    /// For example, the world of a web search tool is open, whereas that
+    /// of a memory tool is not.
+    /// Default: true
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_world_hint: Option<bool>,
+}
+
+impl ToolAnnotations {
+    /// Create annotations for a read-only tool (does not modify environment).
+    pub fn read_only() -> Self {
+        Self {
+            read_only_hint: Some(true),
+            open_world_hint: Some(false),
+            ..Default::default()
+        }
+    }
+
+    /// Create annotations for a tool that modifies state but is not destructive.
+    pub fn additive() -> Self {
+        Self {
+            read_only_hint: Some(false),
+            destructive_hint: Some(false),
+            open_world_hint: Some(false),
+            ..Default::default()
+        }
+    }
+
+    /// Create annotations for a tool that may perform destructive updates.
+    pub fn destructive() -> Self {
+        Self {
+            read_only_hint: Some(false),
+            destructive_hint: Some(true),
+            open_world_hint: Some(false),
+            ..Default::default()
+        }
+    }
+
+    /// Create annotations for an idempotent tool (safe to call multiple times).
+    pub fn idempotent() -> Self {
+        Self {
+            read_only_hint: Some(false),
+            destructive_hint: Some(false),
+            idempotent_hint: Some(true),
+            open_world_hint: Some(false),
+            ..Default::default()
+        }
+    }
+
+    /// Set the human-readable title.
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Mark as interacting with external entities (open world).
+    pub fn with_open_world(mut self) -> Self {
+        self.open_world_hint = Some(true);
+        self
+    }
+}
+
 /// Tool definition.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Based on MCP spec 2025-11-25 with full support for annotations and output schema.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tool {
+    /// Unique identifier for the tool.
     pub name: String,
+
+    /// Human-readable description of the tool's functionality.
     pub description: String,
+
+    /// JSON Schema defining expected parameters for the tool.
+    #[serde(default)]
     pub input_schema: Value,
+
+    /// Optional human-readable title for display purposes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+
+    /// Optional annotations describing tool behavior (hints for AI clients).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub annotations: Option<ToolAnnotations>,
+
+    /// Optional JSON Schema defining the structure of the tool's output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<Value>,
+}
+
+impl Tool {
+    /// Create a new tool with the given name, description, and input schema.
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        input_schema: Value,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            input_schema,
+            title: None,
+            annotations: None,
+            output_schema: None,
+        }
+    }
+
+    /// Set the human-readable title.
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Set the tool annotations.
+    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
+        self.annotations = Some(annotations);
+        self
+    }
+
+    /// Set the output schema.
+    pub fn with_output_schema(mut self, schema: Value) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    /// Mark this tool as read-only (does not modify environment).
+    pub fn read_only(mut self) -> Self {
+        self.annotations = Some(ToolAnnotations::read_only());
+        self
+    }
+
+    /// Mark this tool as additive (modifies state but not destructive).
+    pub fn additive(mut self) -> Self {
+        self.annotations = Some(ToolAnnotations::additive());
+        self
+    }
+
+    /// Mark this tool as destructive (may perform destructive updates).
+    pub fn destructive(mut self) -> Self {
+        self.annotations = Some(ToolAnnotations::destructive());
+        self
+    }
+
+    /// Mark this tool as idempotent (safe to call multiple times).
+    pub fn idempotent(mut self) -> Self {
+        self.annotations = Some(ToolAnnotations::idempotent());
+        self
+    }
 }
 
 /// Tool call result.
@@ -253,6 +428,7 @@ mod tests {
                     "query": { "type": "string" }
                 }
             }),
+            ..Default::default()
         };
 
         let json = serde_json::to_string(&tool).unwrap();
@@ -369,5 +545,105 @@ mod tests {
         let json = serde_json::to_string(&notification).unwrap();
         assert!(!json.contains("\"id\""));
         assert!(json.contains("\"method\""));
+    }
+
+    #[test]
+    fn test_tool_annotations_read_only() {
+        let annotations = ToolAnnotations::read_only();
+        assert_eq!(annotations.read_only_hint, Some(true));
+        assert_eq!(annotations.open_world_hint, Some(false));
+        assert_eq!(annotations.destructive_hint, None);
+        assert_eq!(annotations.idempotent_hint, None);
+    }
+
+    #[test]
+    fn test_tool_annotations_destructive() {
+        let annotations = ToolAnnotations::destructive();
+        assert_eq!(annotations.read_only_hint, Some(false));
+        assert_eq!(annotations.destructive_hint, Some(true));
+        assert_eq!(annotations.open_world_hint, Some(false));
+    }
+
+    #[test]
+    fn test_tool_annotations_idempotent() {
+        let annotations = ToolAnnotations::idempotent();
+        assert_eq!(annotations.read_only_hint, Some(false));
+        assert_eq!(annotations.destructive_hint, Some(false));
+        assert_eq!(annotations.idempotent_hint, Some(true));
+        assert_eq!(annotations.open_world_hint, Some(false));
+    }
+
+    #[test]
+    fn test_tool_annotations_with_title() {
+        let annotations = ToolAnnotations::read_only().with_title("Search Code");
+        assert_eq!(annotations.title, Some("Search Code".to_string()));
+        assert_eq!(annotations.read_only_hint, Some(true));
+    }
+
+    #[test]
+    fn test_tool_annotations_serialization() {
+        let annotations = ToolAnnotations {
+            title: Some("Test Tool".to_string()),
+            read_only_hint: Some(true),
+            destructive_hint: None,
+            idempotent_hint: None,
+            open_world_hint: Some(false),
+        };
+
+        let json = serde_json::to_string(&annotations).unwrap();
+        assert!(json.contains("\"title\":\"Test Tool\""));
+        assert!(json.contains("\"readOnlyHint\":true"));
+        assert!(json.contains("\"openWorldHint\":false"));
+        // None fields should be skipped
+        assert!(!json.contains("destructiveHint"));
+        assert!(!json.contains("idempotentHint"));
+    }
+
+    #[test]
+    fn test_tool_with_annotations() {
+        let tool = Tool::new(
+            "search_code",
+            "Search the codebase",
+            json!({"type": "object"}),
+        )
+        .with_title("Code Search")
+        .with_annotations(ToolAnnotations::read_only());
+
+        assert_eq!(tool.name, "search_code");
+        assert_eq!(tool.title, Some("Code Search".to_string()));
+        assert!(tool.annotations.is_some());
+        let annotations = tool.annotations.unwrap();
+        assert_eq!(annotations.read_only_hint, Some(true));
+    }
+
+    #[test]
+    fn test_tool_read_only_shorthand() {
+        let tool =
+            Tool::new("get_file", "Get file contents", json!({"type": "object"})).read_only();
+
+        assert!(tool.annotations.is_some());
+        let annotations = tool.annotations.unwrap();
+        assert_eq!(annotations.read_only_hint, Some(true));
+    }
+
+    #[test]
+    fn test_tool_with_output_schema() {
+        let tool = Tool::new("analyze", "Analyze code", json!({"type": "object"}))
+            .with_output_schema(json!({
+                "type": "object",
+                "properties": {
+                    "result": { "type": "string" }
+                }
+            }));
+
+        assert!(tool.output_schema.is_some());
+        let schema = tool.output_schema.unwrap();
+        assert!(schema.get("properties").is_some());
+    }
+
+    #[test]
+    fn test_mcp_version_is_latest() {
+        // Verify we're using the latest MCP spec version
+        assert_eq!(MCP_VERSION, "2025-11-25");
     }
 }

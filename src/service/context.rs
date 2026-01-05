@@ -445,28 +445,125 @@ impl ContextService {
         info!("Index cleared");
     }
 
+    /// Bundle a prompt with relevant codebase context (no AI rewriting).
+    ///
+    /// This retrieves relevant code snippets based on the prompt and returns
+    /// a structured bundle containing both the original prompt and the context.
+    /// Use this when you want direct control over how the context is used.
+    pub async fn bundle_prompt(
+        &self,
+        prompt: &str,
+        token_budget: Option<usize>,
+    ) -> Result<BundledPrompt> {
+        self.initialize().await?;
+
+        let budget = token_budget.unwrap_or(8000);
+
+        // Retrieve relevant codebase context
+        let context_result = self.search(prompt, Some(budget)).await?;
+
+        Ok(BundledPrompt {
+            original_prompt: prompt.to_string(),
+            codebase_context: context_result,
+            token_budget: budget,
+        })
+    }
+
     /// Enhance a prompt with codebase context using AI.
-    pub async fn enhance_prompt(&self, prompt: &str) -> Result<String> {
+    ///
+    /// This performs three steps:
+    /// 1. Retrieves relevant codebase context based on the prompt
+    /// 2. Bundles the context with the original prompt
+    /// 3. Uses AI to create an enhanced, structured prompt
+    pub async fn enhance_prompt(
+        &self,
+        prompt: &str,
+        token_budget: Option<usize>,
+    ) -> Result<String> {
         self.initialize().await?;
 
         let context = self.context.read().await;
         let ctx = context.as_ref().ok_or(Error::IndexNotInitialized)?;
 
-        // Use the chat stream to enhance the prompt
+        let budget = token_budget.unwrap_or(6000);
+
+        // Step 1: Retrieve relevant codebase context
+        let codebase_context = ctx.search(prompt, Some(budget)).await?;
+
+        // Step 2: Build the enhancement prompt with actual context
         let enhancement_prompt = format!(
-            r#"You are a prompt enhancement assistant. Given the following simple prompt,
-transform it into a detailed, structured prompt that includes:
-1. Clear objectives
-2. Specific requirements
-3. Expected output format
-4. Any relevant constraints
+            r#"You are an AI prompt enhancement assistant with access to the user's codebase.
 
-Simple prompt: {}
+## Task
+Transform the user's simple prompt into a detailed, actionable prompt that:
+1. Incorporates relevant context from their codebase
+2. References specific files, functions, or patterns found in the codebase
+3. Provides clear objectives and requirements
+4. Suggests implementation approaches based on existing code patterns
 
-Enhanced prompt:"#,
-            prompt
+## User's Original Prompt
+{prompt}
+
+## Relevant Codebase Context
+{codebase_context}
+
+## Instructions
+Based on the codebase context above, create an enhanced prompt that:
+- References specific code locations (files, line numbers, function names)
+- Identifies existing patterns the user should follow
+- Highlights potential integration points
+- Suggests tests or validation approaches based on existing test patterns
+- Maintains the original intent while adding actionable detail
+
+## Enhanced Prompt"#,
+            prompt = prompt,
+            codebase_context = codebase_context
         );
 
+        // Step 3: Use AI to generate the enhanced prompt
         ctx.chat(&enhancement_prompt).await
+    }
+}
+
+/// A prompt bundled with relevant codebase context.
+#[derive(Debug, Clone)]
+pub struct BundledPrompt {
+    /// The original user prompt.
+    pub original_prompt: String,
+    /// Relevant codebase context retrieved via semantic search.
+    pub codebase_context: String,
+    /// The token budget used for context retrieval.
+    pub token_budget: usize,
+}
+
+impl BundledPrompt {
+    /// Format the bundled prompt as a single string.
+    pub fn to_formatted_string(&self) -> String {
+        format!(
+            r#"# User Request
+{prompt}
+
+# Relevant Codebase Context
+{context}"#,
+            prompt = self.original_prompt,
+            context = self.codebase_context
+        )
+    }
+
+    /// Format with a custom system instruction.
+    pub fn to_formatted_string_with_system(&self, system_instruction: &str) -> String {
+        format!(
+            r#"# System
+{system}
+
+# User Request
+{prompt}
+
+# Relevant Codebase Context
+{context}"#,
+            system = system_instruction,
+            prompt = self.original_prompt,
+            context = self.codebase_context
+        )
     }
 }

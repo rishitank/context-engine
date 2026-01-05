@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crate::mcp::handler::{error_result, get_string_arg, success_result, ToolHandler};
-use crate::mcp::protocol::{Tool, ToolResult};
+use crate::mcp::protocol::{Tool, ToolAnnotations, ToolResult};
 use crate::service::PlanningService;
 use crate::types::planning::{Step, StepStatus, StepType};
 
@@ -42,6 +42,8 @@ impl ToolHandler for CreatePlanTool {
                 },
                 "required": ["title", "description"]
             }),
+            annotations: Some(ToolAnnotations::additive().with_title("Create Plan")),
+            ..Default::default()
         }
     }
 
@@ -86,6 +88,8 @@ impl ToolHandler for GetPlanTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Get Plan")),
+            ..Default::default()
         }
     }
 
@@ -129,6 +133,8 @@ impl ToolHandler for ListPlansTool {
                 },
                 "required": []
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("List Plans")),
+            ..Default::default()
         }
     }
 
@@ -166,6 +172,8 @@ impl ToolHandler for AddStepTool {
                 },
                 "required": ["plan_id", "title", "description"]
             }),
+            annotations: Some(ToolAnnotations::additive().with_title("Add Step")),
+            ..Default::default()
         }
     }
 
@@ -229,6 +237,8 @@ impl ToolHandler for UpdateStepTool {
                 },
                 "required": ["plan_id", "step_id", "status"]
             }),
+            annotations: Some(ToolAnnotations::idempotent().with_title("Update Step")),
+            ..Default::default()
         }
     }
 
@@ -286,6 +296,8 @@ impl ToolHandler for RefinePlanTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::additive().with_title("Refine Plan")),
+            ..Default::default()
         }
     }
 
@@ -329,6 +341,8 @@ impl ToolHandler for VisualizePlanTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Visualize Plan")),
+            ..Default::default()
         }
     }
 
@@ -383,6 +397,8 @@ impl ToolHandler for ExecutePlanTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::destructive().with_title("Execute Plan")),
+            ..Default::default()
         }
     }
 
@@ -423,6 +439,8 @@ impl ToolHandler for SavePlanTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::additive().with_title("Save Plan")),
+            ..Default::default()
         }
     }
 
@@ -463,6 +481,8 @@ impl ToolHandler for LoadPlanTool {
                 },
                 "required": ["path"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Load Plan")),
+            ..Default::default()
         }
     }
 
@@ -496,6 +516,8 @@ impl ToolHandler for DeletePlanTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::destructive().with_title("Delete Plan")),
+            ..Default::default()
         }
     }
 
@@ -533,6 +555,8 @@ impl ToolHandler for StartStepTool {
                 },
                 "required": ["plan_id", "step_id"]
             }),
+            annotations: Some(ToolAnnotations::idempotent().with_title("Start Step")),
+            ..Default::default()
         }
     }
 
@@ -579,6 +603,8 @@ impl ToolHandler for CompleteStepTool {
                 },
                 "required": ["plan_id", "step_id"]
             }),
+            annotations: Some(ToolAnnotations::idempotent().with_title("Complete Step")),
+            ..Default::default()
         }
     }
 
@@ -625,6 +651,8 @@ impl ToolHandler for FailStepTool {
                 },
                 "required": ["plan_id", "step_id"]
             }),
+            annotations: Some(ToolAnnotations::idempotent().with_title("Fail Step")),
+            ..Default::default()
         }
     }
 
@@ -669,6 +697,8 @@ impl ToolHandler for ViewProgressTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("View Progress")),
+            ..Default::default()
         }
     }
 
@@ -735,6 +765,8 @@ impl ToolHandler for ViewHistoryTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("View History")),
+            ..Default::default()
         }
     }
 
@@ -780,6 +812,8 @@ impl ToolHandler for RequestApprovalTool {
                 },
                 "required": ["plan_id"]
             }),
+            annotations: Some(ToolAnnotations::additive().with_title("Request Approval")),
+            ..Default::default()
         }
     }
 
@@ -823,6 +857,8 @@ impl ToolHandler for RespondApprovalTool {
                 },
                 "required": ["request_id", "action"]
             }),
+            annotations: Some(ToolAnnotations::idempotent().with_title("Respond Approval")),
+            ..Default::default()
         }
     }
 
@@ -867,6 +903,8 @@ impl ToolHandler for ComparePlanVersionsTool {
                 },
                 "required": ["plan_id", "from_version", "to_version"]
             }),
+            annotations: Some(ToolAnnotations::read_only().with_title("Compare Plan Versions")),
+            ..Default::default()
         }
     }
 
@@ -915,6 +953,8 @@ impl ToolHandler for RollbackPlanTool {
                 },
                 "required": ["plan_id", "version"]
             }),
+            annotations: Some(ToolAnnotations::destructive().with_title("Rollback Plan")),
+            ..Default::default()
         }
     }
 

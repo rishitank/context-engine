@@ -1,14 +1,17 @@
 # API Reference
 
-Complete reference for all 49 MCP tools provided by Context Engine.
+Complete reference for all 73 MCP tools provided by Context Engine.
 
 ## Table of Contents
 
 - [Retrieval Tools](#retrieval-tools-6)
 - [Index Tools](#index-tools-5)
-- [Memory Tools](#memory-tools-4)
+- [Memory Tools](#memory-tools-6)
 - [Planning Tools](#planning-tools-20)
 - [Review Tools](#review-tools-14)
+- [Navigation Tools](#navigation-tools-3)
+- [Workspace Tools](#workspace-tools-7)
+- [Specialized Search Tools](#specialized-search-tools-7)
 
 ---
 
@@ -103,14 +106,41 @@ Get relevant codebase context optimized for prompt enhancement.
 
 ### `enhance_prompt`
 
-Transform a simple prompt into a detailed, structured prompt with codebase context.
+Transform a simple prompt into a detailed, structured prompt by injecting relevant codebase context and using AI to create actionable instructions. The enhanced prompt will reference specific files, functions, and patterns from your codebase.
 
 **Input Schema:**
 ```json
 {
-  "prompt": "string (required) - The simple prompt to enhance (max 10000 chars)"
+  "prompt": "string (required) - The simple prompt to enhance with codebase context (max 10000 chars)",
+  "token_budget": "integer (optional) - Maximum tokens for codebase context (default: 6000)"
 }
 ```
+
+**What it does:**
+1. Retrieves relevant codebase context based on your prompt
+2. Bundles the context with your original prompt
+3. Uses AI to create an enhanced, actionable prompt that references specific code locations
+
+---
+
+### `bundle_prompt`
+
+Bundle a raw prompt with relevant codebase context. Returns the original prompt alongside retrieved code snippets, file summaries, and related context. Use this when you want direct control over how the context is used without AI rewriting.
+
+**Input Schema:**
+```json
+{
+  "prompt": "string (required) - The prompt to bundle with codebase context (max 10000 chars)",
+  "token_budget": "integer (optional) - Maximum tokens for codebase context (default: 8000)",
+  "format": "string (optional) - Output format: 'structured' (sections), 'formatted' (single string), or 'json' (machine-readable). Default: 'structured'",
+  "system_instruction": "string (optional) - Optional system instruction to include in the formatted output"
+}
+```
+
+**Use cases:**
+- AI agents that need to construct their own prompts with context
+- Custom prompt engineering workflows
+- Building context-aware tool chains
 
 ---
 
@@ -199,7 +229,7 @@ Refresh the codebase index by re-scanning all files.
 
 ---
 
-## Memory Tools (4)
+## Memory Tools (6)
 
 ### `add_memory`
 
@@ -259,6 +289,71 @@ Delete a stored memory by its key.
 ```json
 {
   "key": "string (required) - The key of the memory to delete"
+}
+```
+
+---
+
+### `memory_store`
+
+Store information with rich metadata for enhanced retrieval. Compatible with m1rl0k/Context-Engine.
+
+**Input Schema:**
+```json
+{
+  "key": "string (optional) - Unique key; if not provided, a UUID will be generated",
+  "information": "string (required) - The information to store",
+  "kind": "string (optional) - Type of memory: snippet, explanation, pattern, example, reference, memory",
+  "language": "string (optional) - Programming language if applicable",
+  "path": "string (optional) - File path if related to a specific file",
+  "tags": "array (optional) - Tags for categorization",
+  "priority": "integer (optional) - Priority 1-10 (higher = more important)",
+  "topic": "string (optional) - Topic or subject area",
+  "code": "string (optional) - Associated code snippet",
+  "author": "string (optional) - Author of the memory"
+}
+```
+
+**Example:**
+```json
+{
+  "key": "auth-pattern",
+  "information": "JWT authentication pattern used in this project",
+  "kind": "pattern",
+  "language": "typescript",
+  "tags": ["auth", "jwt", "security"],
+  "priority": 8,
+  "topic": "authentication"
+}
+```
+
+---
+
+### `memory_find`
+
+Find memories using hybrid search with filtering. Compatible with m1rl0k/Context-Engine.
+
+**Input Schema:**
+```json
+{
+  "query": "string (required) - Search query",
+  "kind": "string (optional) - Filter by kind: snippet, explanation, pattern, example, reference, memory",
+  "language": "string (optional) - Filter by programming language",
+  "topic": "string (optional) - Filter by topic",
+  "tags": "array (optional) - Filter by tags (any match)",
+  "priority_min": "integer (optional) - Minimum priority (1-10)",
+  "limit": "integer (optional) - Maximum results (default: 10)"
+}
+```
+
+**Example:**
+```json
+{
+  "query": "authentication",
+  "kind": "pattern",
+  "language": "typescript",
+  "priority_min": 5,
+  "limit": 5
 }
 ```
 
@@ -733,6 +828,294 @@ Get detailed metrics for a review session.
 
 ---
 
+## Navigation Tools (3)
+
+### `find_references`
+
+Find all references to a symbol in the codebase.
+
+**Input Schema:**
+```json
+{
+  "symbol": "string (required) - The symbol name to find references for",
+  "file_pattern": "string (optional) - Glob pattern to filter files"
+}
+```
+
+---
+
+### `go_to_definition`
+
+Navigate to the definition of a symbol.
+
+**Input Schema:**
+```json
+{
+  "symbol": "string (required) - The symbol name to find definition for",
+  "file_pattern": "string (optional) - Glob pattern to filter files"
+}
+```
+
+---
+
+### `diff_files`
+
+Compare two files and show differences.
+
+**Input Schema:**
+```json
+{
+  "file1": "string (required) - Path to first file",
+  "file2": "string (required) - Path to second file",
+  "context_lines": "integer (optional) - Number of context lines (default: 3)"
+}
+```
+
+---
+
+## Workspace Tools (7)
+
+### `workspace_stats`
+
+Get comprehensive workspace statistics.
+
+**Input Schema:**
+```json
+{}
+```
+
+**Returns:** File counts by type, total lines of code, repository information.
+
+---
+
+### `git_status`
+
+Get current git status of the workspace.
+
+**Input Schema:**
+```json
+{}
+```
+
+**Returns:** Modified, staged, and untracked files.
+
+---
+
+### `extract_symbols`
+
+Extract all symbols (functions, classes, etc.) from a file.
+
+**Input Schema:**
+```json
+{
+  "path": "string (required) - File path relative to workspace"
+}
+```
+
+**Supported Languages:** Rust, Python, TypeScript, JavaScript, Go, Java, C, C++, Ruby, PHP, Swift, Kotlin, Scala, Elixir, Haskell, Lua, Dart, Clojure, and more.
+
+---
+
+### `git_blame`
+
+Get git blame information for a file.
+
+**Input Schema:**
+```json
+{
+  "path": "string (required) - File path relative to workspace",
+  "start_line": "integer (optional) - Starting line number",
+  "end_line": "integer (optional) - Ending line number"
+}
+```
+
+---
+
+### `git_log`
+
+Get git commit history.
+
+**Input Schema:**
+```json
+{
+  "path": "string (optional) - File path to get history for",
+  "max_count": "integer (optional) - Maximum number of commits (default: 10)"
+}
+```
+
+---
+
+### `dependency_graph`
+
+Generate a dependency graph for the project.
+
+**Input Schema:**
+```json
+{
+  "format": "string (optional) - Output format: 'mermaid' or 'text' (default: 'mermaid')"
+}
+```
+
+---
+
+### `file_outline`
+
+Get the structural outline of a file.
+
+**Input Schema:**
+```json
+{
+  "path": "string (required) - File path relative to workspace"
+}
+```
+
+**Returns:** Hierarchical structure of symbols in the file.
+
+---
+
+## Specialized Search Tools (7)
+
+These tools are compatible with m1rl0k/Context-Engine and provide specialized search capabilities.
+
+### `search_tests_for`
+
+Search for test files related to a query using preset test file patterns.
+
+**Input Schema:**
+```json
+{
+  "query": "string (required) - Search query (function name, class name, or keyword)",
+  "limit": "integer (optional) - Maximum results (default: 10, max: 50)"
+}
+```
+
+**Preset Patterns:** `tests/**/*`, `test/**/*`, `**/*test*.*`, `**/*.spec.*`, `**/__tests__/**/*`
+
+---
+
+### `search_config_for`
+
+Search for configuration files related to a query.
+
+**Input Schema:**
+```json
+{
+  "query": "string (required) - Search query (setting name, config key, or keyword)",
+  "limit": "integer (optional) - Maximum results (default: 10, max: 50)"
+}
+```
+
+**Preset Patterns:** `**/*.yaml`, `**/*.json`, `**/*.toml`, `**/*.ini`, `**/.env*`, `**/config/**/*`
+
+---
+
+### `search_callers_for`
+
+Find all callers/usages of a symbol in the codebase.
+
+**Input Schema:**
+```json
+{
+  "symbol": "string (required) - The symbol name to find callers for",
+  "file_pattern": "string (optional) - File pattern to limit search (e.g., '*.rs')",
+  "limit": "integer (optional) - Maximum results (default: 20, max: 100)"
+}
+```
+
+---
+
+### `search_importers_for`
+
+Find files that import a specific module or symbol.
+
+**Input Schema:**
+```json
+{
+  "module": "string (required) - The module or symbol name to find importers for",
+  "file_pattern": "string (optional) - File pattern to limit search",
+  "limit": "integer (optional) - Maximum results (default: 20, max: 100)"
+}
+```
+
+---
+
+### `info_request`
+
+Simplified codebase retrieval with optional explanation mode.
+
+**Input Schema:**
+```json
+{
+  "query": "string (required) - Natural language query about the codebase",
+  "explain": "boolean (optional) - Include relationship explanations (default: false)",
+  "max_results": "integer (optional) - Maximum results (default: 10, max: 50)"
+}
+```
+
+**Example:**
+```json
+{
+  "query": "How does authentication work?",
+  "explain": true,
+  "max_results": 5
+}
+```
+
+---
+
+### `pattern_search`
+
+Search for structural code patterns across the codebase.
+
+**Input Schema:**
+```json
+{
+  "pattern": "string (optional) - Custom regex pattern to search for",
+  "pattern_type": "string (optional) - Preset pattern type: function, class, import, variable, custom",
+  "language": "string (optional) - Filter by language (rust, python, typescript, go, java, kotlin)",
+  "file_pattern": "string (optional) - File pattern to limit search",
+  "limit": "integer (optional) - Maximum results (default: 20, max: 100)"
+}
+```
+
+**Example:**
+```json
+{
+  "pattern_type": "function",
+  "language": "rust",
+  "file_pattern": "*.rs",
+  "limit": 10
+}
+```
+
+---
+
+### `context_search`
+
+Context-aware semantic search with file context anchoring.
+
+**Input Schema:**
+```json
+{
+  "query": "string (required) - Natural language query",
+  "context_file": "string (optional) - File path to use as context anchor",
+  "include_related": "boolean (optional) - Include related files and symbols (default: true)",
+  "max_tokens": "integer (optional) - Maximum tokens in response (default: 4000, max: 50000)"
+}
+```
+
+**Example:**
+```json
+{
+  "query": "error handling patterns",
+  "context_file": "src/error.rs",
+  "include_related": true,
+  "max_tokens": 8000
+}
+```
+
+---
+
 ## Error Handling
 
 All tools return a `ToolResult` with:
@@ -752,4 +1135,3 @@ context-engine --workspace /path/to/project
 ```bash
 context-engine --workspace /path/to/project --transport http --port 3000
 ```
-

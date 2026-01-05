@@ -167,6 +167,7 @@ mod tests {
                         "input": { "type": "string" }
                     }
                 }),
+                ..Default::default()
             }
         }
 

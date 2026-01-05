@@ -94,16 +94,59 @@ Before using semantic search, index your workspace:
 }
 ```
 
-### Enhance a Simple Prompt
+### Enhance a Simple Prompt (AI-Powered)
 
 ```json
 // Tool: enhance_prompt
 {
-  "prompt": "Add rate limiting to the API"
+  "prompt": "Add rate limiting to the API",
+  "token_budget": 8000
 }
 ```
 
-**Response:** Returns an enhanced prompt with relevant codebase context, existing patterns, and implementation suggestions.
+**Response:** Returns an AI-enhanced prompt that:
+- References specific files and functions from your codebase
+- Identifies existing patterns you should follow
+- Suggests implementation approaches based on your code
+- Highlights integration points and test patterns
+
+### Bundle Prompt with Context (Direct Control)
+
+```json
+// Tool: bundle_prompt
+{
+  "prompt": "Implement user authentication",
+  "token_budget": 10000,
+  "format": "structured"
+}
+```
+
+**Response:**
+```markdown
+# 📦 Bundled Prompt
+
+## Original Prompt
+Implement user authentication
+
+## Codebase Context
+*(Token budget: 10000)*
+
+### Relevant Files
+- src/auth/middleware.rs - Existing auth middleware
+- src/handlers/login.rs - Login handler patterns
+...
+```
+
+### Bundle with Custom System Instruction
+
+```json
+// Tool: bundle_prompt
+{
+  "prompt": "Fix the memory leak in the cache module",
+  "format": "formatted",
+  "system_instruction": "You are a senior Rust developer. Analyze the code and provide memory-safe solutions."
+}
+```
 
 ---
 

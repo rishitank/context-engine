@@ -2,6 +2,7 @@
 name = "context-engine-rs"
 version = "2.0.1"
 edition = "2021"
+rust-version = "1.82"
 description = "A high-performance MCP server for AI-powered codebase context retrieval"
 authors = ["Rishi Tank"]
 license = "MIT"
@@ -70,10 +71,16 @@ notify-debouncer-mini = "0.5"
 
 # Async compression
 async-compression = { version = "0.4", features = ["tokio", "gzip", "brotli", "deflate"] }
+percent-encoding = "2.3.2"
 
 [dev-dependencies]
 tempfile = "3"
 tokio-test = "0.4"
+# Integration testing
+testcontainers = "0.26"
+testcontainers-modules = { version = "0.14", features = ["redis"] }
+assert_cmd = "2"
+predicates = "3"
 
 [profile.release]
 opt-level = 3
