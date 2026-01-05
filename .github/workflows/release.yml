@@ -129,6 +129,7 @@ jobs:
           echo "should_release=false" >> $GITHUB_OUTPUT
 
   # Bump version in Cargo.toml if needed
+  # Uses RELEASE_TOKEN (PAT) to bypass branch protection, falls back to GITHUB_TOKEN
   bump-version:
     needs: check
     if: needs.check.outputs.should_release == 'true' && needs.check.outputs.needs_bump == 'true'
@@ -136,7 +137,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Update Cargo.toml version
         run: |
@@ -154,7 +155,7 @@ jobs:
           git commit -m "chore: bump version to $VERSION [skip ci]"
           git push
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
   build:
     needs: [check, bump-version]
