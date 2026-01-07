@@ -226,9 +226,27 @@ jobs:
 
       - name: Install git-cliff
         run: |
-          # Install git-cliff (Rust-based changelog generator)
-          curl -sSfL https://github.com/orhun/git-cliff/releases/download/v2.7.0/git-cliff-2.7.0-x86_64-unknown-linux-gnu.tar.gz | tar xz
-          sudo mv git-cliff-2.7.0/git-cliff /usr/local/bin/
+          # Install git-cliff v2.11.0 (Rust-based changelog generator)
+          # Using latest version to address CVE-2024-32650 in rustls dependency
+          VERSION="2.11.0"
+          TARBALL="git-cliff-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          DOWNLOAD_URL="https://github.com/orhun/git-cliff/releases/download/v${VERSION}"
+
+          # Download the tarball and checksum
+          curl -sSfL "${DOWNLOAD_URL}/${TARBALL}" -o "${TARBALL}"
+          curl -sSfL "${DOWNLOAD_URL}/${TARBALL}.sha512" -o "${TARBALL}.sha512"
+
+          # Verify checksum before installation
+          echo "Verifying checksum..."
+          sha512sum -c "${TARBALL}.sha512"
+
+          # Extract and install
+          tar xzf "${TARBALL}"
+          sudo mv "git-cliff-${VERSION}/git-cliff" /usr/local/bin/
+
+          # Cleanup
+          rm -rf "${TARBALL}" "${TARBALL}.sha512" "git-cliff-${VERSION}"
+
           git-cliff --version
 
       - name: Generate changelog
@@ -283,12 +301,14 @@ jobs:
           tag_pattern = "v[0-9].*"
           CLIFF_CONFIG
 
-          # Generate changelog for this release
-          git-cliff --config cliff.toml --tag "v${VERSION}" "${PREV_TAG}..HEAD" > changelog.md
+          # Generate changelog for this release with proper error handling
+          # Capture exit code to distinguish between failure and empty output
+          CLIFF_EXIT_CODE=0
+          git-cliff --config cliff.toml --tag "v${VERSION}" "${PREV_TAG}..HEAD" > changelog.md 2>&1 || CLIFF_EXIT_CODE=$?
 
-          # If git-cliff fails or produces empty output, fall back to simple format
-          if [ ! -s changelog.md ]; then
-            echo "git-cliff produced empty output, using fallback"
+          # Check if git-cliff failed (non-zero exit code)
+          if [ $CLIFF_EXIT_CODE -ne 0 ]; then
+            echo "git-cliff failed with exit code $CLIFF_EXIT_CODE, using fallback"
             {
               echo "# Release v${VERSION}"
               echo ""
@@ -298,6 +318,20 @@ jobs:
               echo ""
               git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (\`%h\`) - @%an"
             } > changelog.md
+          # Check if git-cliff succeeded but produced empty output
+          elif [ ! -s changelog.md ]; then
+            echo "git-cliff produced empty output (no commits in range), using fallback"
+            {
+              echo "# Release v${VERSION}"
+              echo ""
+              echo "Released on $(date '+%Y-%m-%d')"
+              echo ""
+              echo "### 📦 Changes"
+              echo ""
+              git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (\`%h\`) - @%an"
+            } > changelog.md
+          else
+            echo "git-cliff succeeded with valid output"
           fi
 
           # Output changelog for use in release
