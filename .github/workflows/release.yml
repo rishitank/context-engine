@@ -254,11 +254,13 @@ jobs:
         run: |
           VERSION="${{ needs.check.outputs.version }}"
 
-          # Previous release = newest v* tag other than the one being released.
-          # (On workflow_run/workflow_dispatch the new tag does not exist yet, so
-          # the newest tag is the previous release; on a tag push it is the new
-          # tag and must be excluded.)
-          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -vx "v${VERSION}" | head -1 || true)
+          # Previous release = newest v* tag strictly older (by version order)
+          # than the one being released. The new tag does not exist yet on
+          # workflow_run/workflow_dispatch and does on a tag push; either way it
+          # is not its own predecessor, and a re-release of an older version never
+          # picks a newer tag.
+          PREV_TAG=$( (git tag -l 'v*'; echo "v${VERSION}") | sort -uV |
+            awk -v target="v${VERSION}" '$0 == target { exit } { prev = $0 } END { print prev }')
           if [ -n "$PREV_TAG" ]; then
             RANGE="${PREV_TAG}..HEAD"
           else
