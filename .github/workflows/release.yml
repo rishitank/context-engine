@@ -254,19 +254,25 @@ jobs:
         run: |
           VERSION="${{ needs.check.outputs.version }}"
 
-          # Get previous tag for range
-          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | head -2 | tail -1)
-          if [ -z "$PREV_TAG" ]; then
-            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          # Previous release = newest v* tag other than the one being released.
+          # (On workflow_run/workflow_dispatch the new tag does not exist yet, so
+          # the newest tag is the previous release; on a tag push it is the new
+          # tag and must be excluded.)
+          PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -vx "v${VERSION}" | head -1 || true)
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            # No previous release: leave RANGE empty to cover the full history
+            RANGE=""
           fi
-          echo "Generating changelog from $PREV_TAG to HEAD"
+          echo "Generating changelog for ${RANGE:-full history}"
 
           # Create git-cliff config inline
           cat > cliff.toml << 'CLIFF_CONFIG'
           [changelog]
           header = ""
           body = """
-          # Release v{{ version }}
+          # Release {{ version }}
 
           Released on {{ timestamp | date(format="%Y-%m-%d") }}
 
@@ -292,6 +298,8 @@ jobs:
             { message = "^perf", group = "⚡ Performance" },
             { message = "^refactor", group = "🎨 Refactoring" },
             { message = "^test", group = "🧪 Tests" },
+            { message = "^chore: bump version", skip = true },
+            { message = "^Merge ", skip = true },
             { message = "^chore", group = "🔧 Maintenance" },
             { message = "^ci", group = "🔧 Maintenance" },
             { message = "^build", group = "🔧 Maintenance" },
@@ -304,7 +312,8 @@ jobs:
           # Generate changelog for this release with proper error handling
           # Capture exit code to distinguish between failure and empty output
           CLIFF_EXIT_CODE=0
-          git-cliff --config cliff.toml --tag "v${VERSION}" "${PREV_TAG}..HEAD" > changelog.md 2>&1 || CLIFF_EXIT_CODE=$?
+          git-cliff --config cliff.toml --tag "v${VERSION}" ${RANGE:+"$RANGE"} > changelog.md 2> cliff.err || CLIFF_EXIT_CODE=$?
+          cat cliff.err >&2
 
           # Check if git-cliff failed (non-zero exit code)
           if [ $CLIFF_EXIT_CODE -ne 0 ]; then
@@ -316,7 +325,7 @@ jobs:
               echo ""
               echo "### 📦 Changes"
               echo ""
-              git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (\`%h\`) - @%an"
+              git log "${RANGE:-HEAD}" --pretty=format:"- %s (\`%h\`) - @%an"
             } > changelog.md
           # Check if git-cliff succeeded but produced empty output
           elif [ ! -s changelog.md ]; then
@@ -328,16 +337,17 @@ jobs:
               echo ""
               echo "### 📦 Changes"
               echo ""
-              git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (\`%h\`) - @%an"
+              git log "${RANGE:-HEAD}" --pretty=format:"- %s (\`%h\`) - @%an"
             } > changelog.md
           else
             echo "git-cliff succeeded with valid output"
           fi
 
           # Output changelog for use in release
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          DELIM="CHANGELOG_$(openssl rand -hex 8)"
+          echo "changelog<<${DELIM}" >> $GITHUB_OUTPUT
           cat changelog.md >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "${DELIM}" >> $GITHUB_OUTPUT
 
           # Display changelog
           echo "=== Generated Changelog ==="
