@@ -732,7 +732,7 @@ impl ToolHandler for ViewProgressTool {
                     "in_progress": in_progress,
                     "failed": failed,
                     "pending": pending,
-                    "progress_percent": if total > 0 { (completed * 100) / total } else { 0 }
+                    "progress_percent": (completed * 100).checked_div(total).unwrap_or(0)
                 });
                 Ok(success_result(serde_json::to_string_pretty(&progress)?))
             }
