@@ -974,3 +974,68 @@ impl ToolHandler for RollbackPlanTool {
         Ok(success_result(serde_json::to_string_pretty(&result)?))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::protocol::ContentBlock;
+    use tempfile::TempDir;
+
+    fn step(id: u32, status: StepStatus) -> Step {
+        Step {
+            id,
+            title: format!("step {id}"),
+            description: String::new(),
+            status,
+            step_type: StepType::Implementation,
+            dependencies: vec![],
+            affected_files: vec![],
+            estimated_duration: None,
+            actual_duration: None,
+            completed_at: None,
+            error: None,
+            output: None,
+            requires_approval: false,
+            approval: None,
+            rollback: None,
+            validation: vec![],
+        }
+    }
+
+    async fn progress_percent(steps: Vec<Step>) -> u64 {
+        let temp = TempDir::new().unwrap();
+        let service = Arc::new(PlanningService::new(temp.path()).await.unwrap());
+        let plan = service
+            .create_plan("plan".to_string(), String::new())
+            .await
+            .unwrap();
+        for s in steps {
+            service.add_step(&plan.id, s).await.unwrap();
+        }
+
+        let tool = ViewProgressTool::new(service);
+        let args = HashMap::from([("plan_id".to_string(), Value::String(plan.id))]);
+        let result = tool.execute(args).await.unwrap();
+        let ContentBlock::Text { text } = &result.content[0] else {
+            panic!("expected text content");
+        };
+        let json: Value = serde_json::from_str(text).unwrap();
+        json["progress_percent"].as_u64().unwrap()
+    }
+
+    #[tokio::test]
+    async fn view_progress_is_zero_for_empty_plan() {
+        assert_eq!(progress_percent(vec![]).await, 0);
+    }
+
+    #[tokio::test]
+    async fn view_progress_reports_completed_share() {
+        let steps = vec![
+            step(1, StepStatus::Completed),
+            step(2, StepStatus::Pending),
+            step(3, StepStatus::Pending),
+        ];
+        // 1 of 3 completed, integer division
+        assert_eq!(progress_percent(steps).await, 33);
+    }
+}
