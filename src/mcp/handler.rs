@@ -9,6 +9,8 @@ use crate::error::Result;
 use crate::mcp::protocol::{Tool, ToolResult};
 
 /// Handler for MCP tool calls.
+// async_trait expands to boxed futures, which trips clippy::double_must_use on newer stable.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait ToolHandler: Send + Sync {
     /// Get the tool definition.

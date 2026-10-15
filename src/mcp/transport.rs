@@ -20,6 +20,8 @@ pub enum Message {
 }
 
 /// Transport trait for MCP communication.
+// async_trait expands to boxed futures, which trips clippy::double_must_use on newer stable.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Transport: Send + Sync {
     /// Start the transport, returning channels for messages.
